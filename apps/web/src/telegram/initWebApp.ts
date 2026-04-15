@@ -11,6 +11,9 @@ interface TelegramWebApp {
   ready: () => void;
   expand: () => void;
   themeParams: TelegramTheme;
+  setHeaderColor?: (color: string) => void;
+  setBackgroundColor?: (color: string) => void;
+  setBottomBarColor?: (color: string) => void;
   HapticFeedback?: {
     impactOccurred: (style: "light" | "medium" | "heavy") => void;
     notificationOccurred: (type: "success" | "warning" | "error") => void;
@@ -32,6 +35,12 @@ export function initTelegram() {
   tg.expand();
   // We deliberately IGNORE tg.themeParams — we want our own dark-grey casino
   // theme regardless of the user's Telegram theme (some are navy/blue tinted).
+  // But we DO tell Telegram to paint its own chrome (header + bottom bar) in
+  // our dark grey so the seams blend in.
+  const BG = "#101010";
+  try { tg.setHeaderColor?.(BG); } catch { /* older client */ }
+  try { tg.setBackgroundColor?.(BG); } catch { /* older client */ }
+  try { tg.setBottomBarColor?.(BG); } catch { /* older client */ }
 }
 
 // Silence unused-type warning; Telegram still passes themeParams but we skip them.
