@@ -49,7 +49,8 @@ export function getBetsForRound(roundId: number): BetRow[] {
   return db.prepare("SELECT * FROM bets WHERE round_id = ? ORDER BY created_at ASC").all(roundId) as BetRow[];
 }
 
-export function getOrInsertBet(input: {
+/** Insert or top-up a player's bet for the round. Adds amountNano to existing stake. */
+export function upsertBet(input: {
   roundId: number;
   userId: string;
   amountNano: bigint;
@@ -58,7 +59,15 @@ export function getOrInsertBet(input: {
   const existing = db
     .prepare("SELECT * FROM bets WHERE round_id = ? AND user_id = ?")
     .get(input.roundId, input.userId) as BetRow | undefined;
-  if (existing) return existing;
+  if (existing) {
+    const newAmount = BigInt(existing.amount_nano) + input.amountNano;
+    db.prepare(
+      `UPDATE bets SET amount_nano = ? WHERE round_id = ? AND user_id = ?`,
+    ).run(newAmount.toString(), input.roundId, input.userId);
+    return db
+      .prepare("SELECT * FROM bets WHERE round_id = ? AND user_id = ?")
+      .get(input.roundId, input.userId) as BetRow;
+  }
   db.prepare(
     `INSERT INTO bets (round_id, user_id, amount_nano, client_seed_hex, created_at) VALUES (?, ?, ?, ?, ?)`,
   ).run(input.roundId, input.userId, input.amountNano.toString(), input.clientSeedHex, Date.now());

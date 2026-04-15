@@ -23,7 +23,7 @@ describe("trajectory", () => {
   it("simulation terminates within max time", () => {
     const seed = "11" + "ff".repeat(31);
     const r = simulateTrajectory(seed);
-    expect(r.durationMs).toBeLessThanOrEqual(6001);
+    expect(r.durationMs).toBeLessThanOrEqual(9001);
     expect(r.steps.length).toBeGreaterThan(10);
   });
 });

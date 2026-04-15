@@ -25,19 +25,19 @@ export function startBot() {
   const bot = new Bot(config.BOT_TOKEN);
 
   bot.command("start", async (ctx) => {
-    const kb = new InlineKeyboard().webApp("🎰 Open Casino", config.PUBLIC_WEB_URL);
+    const kb = new InlineKeyboard().webApp("Open Casino", config.PUBLIC_WEB_URL);
     await ctx.reply(
-      "Welcome to Conetic Casino. Stake TON, win the pot, may the wedges be ever in your favor.\n\n" +
+      "Welcome to Conetic Casino.\n\n" +
         "Commands:\n" +
-        "/play – open the arena\n" +
-        "/deposit – credit 1000 TON test balance (testnet only)\n" +
-        "/balance – check your balance",
+        "/play - open the arena\n" +
+        "/deposit - credit 1000 TON test balance (testnet)\n" +
+        "/balance - check your balance",
       { reply_markup: kb },
     );
   });
 
   bot.command("play", async (ctx) => {
-    const kb = new InlineKeyboard().webApp("🎰 Open Casino", config.PUBLIC_WEB_URL);
+    const kb = new InlineKeyboard().webApp("Open Casino", config.PUBLIC_WEB_URL);
     await ctx.reply("Tap to open the arena.", { reply_markup: kb });
   });
 
@@ -51,7 +51,7 @@ export function startBot() {
       photoUrl: null,
     });
     const bal = getBalanceNano(user.id);
-    await ctx.reply(`💎 Your balance: ${fmtTon(bal)} TON`);
+    await ctx.reply(`Your balance: ${fmtTon(bal)} TON`);
   });
 
   bot.command("deposit", async (ctx) => {
@@ -84,9 +84,9 @@ export function startBot() {
     const newBal = getBalanceNano(user.id);
     pushBalance(user.id, newBal);
     await ctx.reply(
-      `🎁 Credited ${fmtTon(PLAY_MONEY_AMOUNT_NANO)} TON test balance.\n` +
+      `Credited ${fmtTon(PLAY_MONEY_AMOUNT_NANO)} TON test balance.\n` +
         `New balance: ${fmtTon(newBal)} TON\n\n` +
-        `Tap /play to start staking!`,
+        `Tap /play to start staking.`,
     );
   });
 

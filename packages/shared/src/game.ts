@@ -44,12 +44,12 @@ export type RoundResult = z.infer<typeof RoundResult>;
 export const ARENA = {
   HALF_SIDE: 1.0,        // logical units; client scales to pixels
   SIM_DT_MS: 1000 / 60,  // fixed timestep
-  MAX_SIM_MS: 6000,      // hard cap on a round animation
+  MAX_SIM_MS: 9000,      // hard cap on a round animation (~9s — feels like a casino spin)
   BALL_RADIUS: 0.04,
-  INITIAL_SPEED_MIN: 1.4,
-  INITIAL_SPEED_MAX: 2.2,
-  DAMPING_PER_SEC: 0.55, // velocity multiplier per second (e^(-t * (1-DAMPING)))
-  STOP_SPEED: 0.05,      // below this, ball stops
+  INITIAL_SPEED_MIN: 1.6,
+  INITIAL_SPEED_MAX: 2.4,
+  DAMPING_PER_SEC: 0.72, // higher = slower decay → longer spin
+  STOP_SPEED: 0.04,      // below this, ball stops
   RAKE_BPS: 50,          // 0.5%
   BPS_DENOM: 10000,
 } as const;

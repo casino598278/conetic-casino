@@ -14,7 +14,7 @@ import {
   createRound,
   findUnresolvedRounds,
   getBetsForRound,
-  getOrInsertBet,
+  upsertBet,
   getRound,
   markLive,
   markRefunded,
@@ -31,7 +31,7 @@ export type JoinResult =
   | { ok: true; snapshot: LobbySnapshot }
   | {
       ok: false;
-      error: "phase_closed" | "insufficient_balance" | "below_min" | "above_max" | "duplicate";
+      error: "phase_closed" | "insufficient_balance" | "below_min" | "above_max";
     };
 
 /**
@@ -117,17 +117,14 @@ export class GameEngine extends EventEmitter {
 
     try {
       txn(() => {
-        // Reject duplicate bet from same user in same round.
-        const existing = getBetsForRound(round.id).find((b) => b.user_id === input.userId);
-        if (existing) throw new DuplicateBetError();
-
         debit({
           userId: input.userId,
           amountNano: input.amountNano,
           reason: "bet",
           roundId: round.id,
         });
-        getOrInsertBet({
+        // Top up if user already has a stake this round (multi-bet support).
+        upsertBet({
           roundId: round.id,
           userId: input.userId,
           amountNano: input.amountNano,
@@ -138,7 +135,6 @@ export class GameEngine extends EventEmitter {
       });
     } catch (err) {
       if (err instanceof InsufficientBalanceError) return { ok: false, error: "insufficient_balance" };
-      if (err instanceof DuplicateBetError) return { ok: false, error: "duplicate" };
       throw err;
     }
 
@@ -355,13 +351,6 @@ export class GameEngine extends EventEmitter {
         clientSeedHex: b.client_seed_hex,
       };
     });
-  }
-}
-
-class DuplicateBetError extends Error {
-  constructor() {
-    super("duplicate bet");
-    this.name = "DuplicateBetError";
   }
 }
 

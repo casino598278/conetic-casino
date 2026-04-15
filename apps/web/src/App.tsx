@@ -3,7 +3,6 @@ import { ArenaCanvas } from "./arena/ArenaCanvas";
 import { BetBar } from "./ui/BetBar";
 import { PlayersList } from "./ui/PlayersList";
 import { WalletSheet } from "./ui/WalletSheet";
-import { FairnessModal } from "./ui/FairnessModal";
 import { useLobbyStore } from "./state/lobbyStore";
 import { useWalletStore } from "./state/walletStore";
 import { api, login } from "./net/api";
@@ -47,7 +46,6 @@ export default function App() {
   const setBalance = useWalletStore((s) => s.setBalance);
 
   const [showWallet, setShowWallet] = useState(false);
-  const [showFair, setShowFair] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -140,11 +138,11 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>🎰 Conetic Casino</h1>
+        <h1>Conetic Casino</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {!wsConnected && <span className="ws-disconnected" title="Reconnecting…" />}
           <button className="balance-pill" onClick={() => setShowWallet(true)}>
-            💎 {fmtTon(balance.toString())} TON
+            {fmtTon(balance.toString())} TON
           </button>
         </div>
       </header>
@@ -187,27 +185,9 @@ export default function App() {
       <div className="tabs">
         <button className="active">Arena</button>
         <button onClick={() => setShowWallet(true)}>Wallet</button>
-        <button onClick={() => setShowFair(true)}>Verify</button>
       </div>
 
       {showWallet && <WalletSheet onClose={() => setShowWallet(false)} />}
-      {showFair && (
-        <FairnessModal
-          initial={
-            lastResult && snapshot
-              ? {
-                  serverSeedHex: lastResult.serverSeedHex,
-                  serverSeedHash: lastResult.serverSeedHash,
-                  clientSeedsHex: lastResult.clientSeedsHex,
-                  roundId: lastResult.roundId,
-                  potNano: snapshot.potNano,
-                  players: snapshot.players.map((p) => ({ userId: p.userId, stakeNano: p.stakeNano })),
-                }
-              : undefined
-          }
-          onClose={() => setShowFair(false)}
-        />
-      )}
 
       {toast && <div className="toast">{toast}</div>}
     </div>
