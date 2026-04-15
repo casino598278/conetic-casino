@@ -26,7 +26,7 @@ interface Confetti {
   size: number;
 }
 
-const COLORS = ["#3b82f6", "#f5c863", "#6ee3a3", "#ff6b78", "#b39dff", "#ff8fc7", "#4ad6e8"];
+const COLORS = ["#f5c14b", "#ffd76e", "#ff8a4c", "#6ee3a3", "#ff6b78", "#b39dff", "#ff8fc7"];
 
 export function WinScreen({ username, payoutNano, multiplier, photoUrl, isMe, onClose }: Props) {
   const [in1, setIn1] = useState(false);

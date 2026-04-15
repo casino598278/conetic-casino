@@ -22,6 +22,8 @@
   --text:  #f2f2f2;
   --t2:    #c0c0c0;
   --t3:    #787878;
+  --muted: #787878;   /* alias of t3, used by ErrorBoundary + WalletSheet */
+  --accent: #f5c14b;  /* alias of --blue (gold) */
   --r:     12px;
   --rs:    8px;
   --safe-top:    env(safe-area-inset-top, 0px);
@@ -247,6 +249,13 @@ input, textarea { font-family: inherit; }
   border-color: var(--b2);
 }
 .hash-pill svg { color: var(--t3); }
+
+.empty-players {
+  text-align: center;
+  padding: 14px 0;
+  color: var(--t3);
+  font-size: 13px;
+}
 
 .player-row {
   display: flex;
@@ -702,13 +711,16 @@ input, textarea { font-family: inherit; }
   flex: 1;
   background: transparent;
   border: none;
-  color: var(--t2);
+  color: var(--text);
+  opacity: 0.55;
   padding: 8px 10px;
   font-size: 12px;
   font-weight: 600;
   border-radius: 999px;
-  transition: background .12s, color .12s;
+  transition: background .12s, color .12s, opacity .12s;
 }
+.history-tab:hover { opacity: 0.9; }
+.history-tab.active { opacity: 1; }
 .history-tab.active {
   background: var(--text);
   color: var(--bg);

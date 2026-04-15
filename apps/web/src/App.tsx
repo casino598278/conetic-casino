@@ -130,7 +130,8 @@ export default function App() {
     setTimeout(() => setToast(null), 2500);
   };
 
-  // Show the win screen after the spin animation completes (~9.3s after RoundLive).
+  // The server only emits RoundResult once the animation has finished, so we
+  // just wait a short beat for the zoom-to-winner to play out in the arena.
   useEffect(() => {
     if (!lastResult) {
       setWinScreenVisible(false);
@@ -139,7 +140,7 @@ export default function App() {
     const t = setTimeout(() => {
       setWinScreenVisible(true);
       setPillsRefreshKey((k) => k + 1);
-    }, 11300);
+    }, 1200);
     return () => clearTimeout(t);
   }, [lastResult]);
 

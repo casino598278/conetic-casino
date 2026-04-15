@@ -28,9 +28,11 @@ interface ArenaState {
   overlayContainer: Container;   // winner reveal
   wedges: Wedge[];
   ball: Container | null;
-  arrow: Graphics | null;        // pointing arrow during SPIN phase
+  arrow: Graphics | null;
   ballLabel: Text | null;
   winnerOverlay: Container | null;
+  waitingText: Text | null;      // "Waiting for players…" placeholder
+  rafWaiting: number | null;
   rafSpin: number | null;
   rafZoom: number | null;
   renderEpoch: number;
@@ -82,6 +84,8 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
           arrow: null,
           ballLabel: null,
           winnerOverlay: null,
+          waitingText: null,
+          rafWaiting: null,
           rafSpin: null,
           rafZoom: null,
           renderEpoch: 0,
@@ -91,6 +95,10 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
       });
     return () => {
       cancelled = true;
+      const st = stateRef.current;
+      if (st?.rafWaiting) cancelAnimationFrame(st.rafWaiting);
+      if (st?.rafSpin) cancelAnimationFrame(st.rafSpin);
+      if (st?.rafZoom) cancelAnimationFrame(st.rafZoom);
       if (appRef.current) {
         appRef.current.destroy(true);
         appRef.current = null;
@@ -137,6 +145,7 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
       }
 
       if (players.length === 0 || potNano === 0n) {
+        stopWaitingPulse(st);
         st.wedgeContainer.removeChildren();
         st.avatarContainer.removeChildren();
         st.ballContainer.removeChildren();
@@ -147,6 +156,8 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
         drawEmptyState(st);
         return;
       }
+      // Round has players — ensure the waiting pulse is stopped.
+      stopWaitingPulse(st);
 
       const wedges = buildWedges(players, potNano);
       st.wedges = wedges;
@@ -519,25 +530,18 @@ function clearOverlay(st: ArenaState) {
   }
 }
 
-/** Draw a subtle grid + "Waiting for players..." text when no round is active. */
+/** Draw a subtle grid + pulsing "Waiting for players…" text when no round is active. */
 function drawEmptyState(st: ArenaState) {
   const GRID_STEP = 30;
   const ALPHA = 0.08;
-  const side = PIX_PER_UNIT; // half side in px
+  const side = PIX_PER_UNIT;
 
   const g = new Graphics();
-  // Vertical lines
-  for (let x = -side; x <= side; x += GRID_STEP) {
-    g.moveTo(x, -side).lineTo(x, side);
-  }
-  // Horizontal lines
-  for (let y = -side; y <= side; y += GRID_STEP) {
-    g.moveTo(-side, y).lineTo(side, y);
-  }
+  for (let x = -side; x <= side; x += GRID_STEP) g.moveTo(x, -side).lineTo(x, side);
+  for (let y = -side; y <= side; y += GRID_STEP) g.moveTo(-side, y).lineTo(side, y);
   g.stroke({ color: 0xffffff, width: 1, alpha: ALPHA });
   st.wedgeContainer.addChild(g);
 
-  // Centered text
   const text = new Text({
     text: "Waiting for players…",
     style: {
@@ -550,6 +554,31 @@ function drawEmptyState(st: ArenaState) {
   text.anchor.set(0.5);
   text.position.set(0, 0);
   st.wedgeContainer.addChild(text);
+  st.waitingText = text;
+
+  // Pulse: 2s cycle, scale 0.95 → 1.05, alpha 0.55 → 1.0
+  if (st.rafWaiting) cancelAnimationFrame(st.rafWaiting);
+  const start = performance.now();
+  const loop = () => {
+    if (!st.waitingText) { st.rafWaiting = null; return; }
+    const t = ((performance.now() - start) / 2000) % 1; // 0..1
+    const phase = (Math.sin(t * Math.PI * 2) + 1) / 2;   // 0..1..0
+    const scale = 0.96 + phase * 0.08;                   // 0.96 → 1.04
+    const alpha = 0.55 + phase * 0.45;                   // 0.55 → 1.0
+    st.waitingText.scale.set(scale);
+    st.waitingText.alpha = alpha;
+    st.rafWaiting = requestAnimationFrame(loop);
+  };
+  st.rafWaiting = requestAnimationFrame(loop);
+}
+
+/** Stop the waiting-text pulse (called when wedges take over). */
+function stopWaitingPulse(st: ArenaState) {
+  if (st.rafWaiting) {
+    cancelAnimationFrame(st.rafWaiting);
+    st.rafWaiting = null;
+  }
+  st.waitingText = null;
 }
 
 /** Find the wedge whose polygon contains the ball's pixel position. */
