@@ -29,7 +29,9 @@ function useCountdown(endsAt: number | null): string {
   }, []);
   if (endsAt == null) return "—";
   const ms = Math.max(0, endsAt - now);
-  const s = Math.floor(ms / 1000);
+  // Ceiling so the UI shows "00:01" right until the round actually starts,
+  // instead of sitting at "00:00" during the last half-second.
+  const s = Math.max(1, Math.ceil(ms / 1000));
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
@@ -172,7 +174,6 @@ export default function App() {
           </svg>
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {!wsConnected && <span className="ws-disconnected" title="Reconnecting…" />}
           <button className="balance-pill" onClick={() => setShowWallet(true)}>
             {fmtTon(balance.toString())} TON
           </button>

@@ -43,14 +43,12 @@ const SPIN_INITIAL_OMEGA_MAX = 28;  // rad/sec ≈ 4.5 rev/sec
 const SPIN_FRICTION = 0.10;          // aggressive decel so spin lasts ~1s
 const SPIN_LAUNCH_OMEGA = 3.0;       // launch threshold
 
-// SHOOT phase: ball travels with elastic wall bounces, damping ramps up late.
-// Tuned so the ball cruises fast for ~6s then decelerates hard over the last ~2s.
-const SHOOT_SPEED_MIN = 4.0;         // logical units / sec (arena is 2 units wide)
-const SHOOT_SPEED_MAX = 5.0;
-const SHOOT_COAST_SEC = 6.0;         // low-friction cruise window
-const SHOOT_COAST_DAMPING = 0.97;    // per-second (very light decel)
-const SHOOT_BRAKE_DAMPING = 0.18;    // per-second (hard decel after coast)
-const SHOOT_STOP_SPEED = 0.06;
+// SHOOT phase: exponential decay over the whole ~9s — very fast at start,
+// smoothly slowing down with no abrupt brake. Speed at t: v0 * decay^t.
+const SHOOT_SPEED_MIN = 7.5;         // logical units / sec (arena is 2 units wide)
+const SHOOT_SPEED_MAX = 9.0;
+const SHOOT_DAMPING = 0.62;          // per-second multiplier → reaches ~6% at 6s
+const SHOOT_STOP_SPEED = 0.04;
 
 export interface SeedDerived {
   spinAngle0: number;
@@ -98,40 +96,26 @@ export function simulateTrajectory(seedHex: string): TrajectoryResult {
   let vy = Math.sin(launchAngle) * d.shootSpeed;
   let x = 0;
   let y = 0;
-  const coastDecay = Math.exp(Math.log(SHOOT_COAST_DAMPING) * DT);
-  const brakeDecay = Math.exp(Math.log(SHOOT_BRAKE_DAMPING) * DT);
-  const shootStartMs = elapsedMs;
+  const shootDecay = Math.exp(Math.log(SHOOT_DAMPING) * DT);
 
   while (i < MAX_STEPS) {
     x += vx * DT;
     y += vy * DT;
 
     // Elastic reflection off walls (clamp + flip velocity).
-    if (x > HALF - R) {
-      x = HALF - R;
-      vx = -Math.abs(vx);
-    } else if (x < -HALF + R) {
-      x = -HALF + R;
-      vx = Math.abs(vx);
-    }
-    if (y > HALF - R) {
-      y = HALF - R;
-      vy = -Math.abs(vy);
-    } else if (y < -HALF + R) {
-      y = -HALF + R;
-      vy = Math.abs(vy);
-    }
+    if (x > HALF - R) { x = HALF - R; vx = -Math.abs(vx); }
+    else if (x < -HALF + R) { x = -HALF + R; vx = Math.abs(vx); }
+    if (y > HALF - R) { y = HALF - R; vy = -Math.abs(vy); }
+    else if (y < -HALF + R) { y = -HALF + R; vy = Math.abs(vy); }
 
-    // First ~6s: near-frictionless cruise. After that: hard brake.
-    const shootElapsedSec = (elapsedMs - shootStartMs) / 1000;
-    const decay = shootElapsedSec < SHOOT_COAST_SEC ? coastDecay : brakeDecay;
-    vx *= decay;
-    vy *= decay;
+    // Exponential deceleration: fast at start, smoothly slowing, no hard brake.
+    vx *= shootDecay;
+    vy *= shootDecay;
 
     elapsedMs += ARENA.SIM_DT_MS;
     steps.push({ phase: "shoot", x, y, angle: launchAngle, t: elapsedMs });
     i++;
-    if (shootElapsedSec >= SHOOT_COAST_SEC && Math.hypot(vx, vy) < SHOOT_STOP_SPEED) break;
+    if (Math.hypot(vx, vy) < SHOOT_STOP_SPEED) break;
   }
 
   const last = steps[steps.length - 1] ?? { x: 0, y: 0, t: 0 };

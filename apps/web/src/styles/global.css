@@ -148,18 +148,6 @@ input, textarea { font-family: inherit; }
   font-weight: 700;
   font-size: 14px;
   letter-spacing: 0.5px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.pot-row .live::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--win);
-  box-shadow: 0 0 6px var(--win);
-  animation: pulse 1.5s ease-in-out infinite;
 }
 .pot-row .countdown {
   color: var(--t2);

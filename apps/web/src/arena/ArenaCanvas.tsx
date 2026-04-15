@@ -106,7 +106,16 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
     };
   }, []);
 
-  // Redraw wedges + avatars + ball whenever players change
+  // Build a signature that only changes when the PLAYERS actually change
+  // (not on every lobby tick). Otherwise the full redraw below flashes
+  // avatars every 250ms.
+  const playersSignature = snapshot
+    ? `${snapshot.roundId}|${snapshot.players
+        .map((p) => `${p.userId}:${p.stakeNano}:${p.photoUrl ?? ""}`)
+        .join(",")}`
+    : "";
+
+  // Redraw wedges + avatars + ball only when the signature changes.
   useEffect(() => {
     const st = stateRef.current;
     if (!st || !snapshot) return;
@@ -195,7 +204,8 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
     } catch (err) {
       console.error("[arena] render failed", err);
     }
-  }, [snapshot]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playersSignature]);
 
   // Spin → Shoot animation
   useEffect(() => {
