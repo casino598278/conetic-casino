@@ -30,15 +30,12 @@ export function initTelegram() {
   if (!tg) return;
   tg.ready();
   tg.expand();
-  applyTheme(tg.themeParams);
+  // We deliberately IGNORE tg.themeParams — we want our own dark-grey casino
+  // theme regardless of the user's Telegram theme (some are navy/blue tinted).
 }
 
-function applyTheme(t: TelegramTheme) {
-  if (t.bg_color) document.documentElement.style.setProperty("--bg", t.bg_color);
-  if (t.text_color) document.documentElement.style.setProperty("--text", t.text_color);
-  if (t.hint_color) document.documentElement.style.setProperty("--muted", t.hint_color);
-  if (t.button_color) document.documentElement.style.setProperty("--accent", t.button_color);
-}
+// Silence unused-type warning; Telegram still passes themeParams but we skip them.
+type _UnusedTheme = TelegramTheme;
 
 export function getInitData(): string {
   const tg = window.Telegram?.WebApp;

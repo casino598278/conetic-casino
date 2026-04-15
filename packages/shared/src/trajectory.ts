@@ -11,7 +11,7 @@
 import { ARENA, type PlayerEntry } from "./game.js";
 import { Xoshiro256ss } from "./prng.js";
 import { hexToBuf } from "./fair.js";
-import { buildWedges, type Point, type Wedge, PERIMETER_LEN } from "./wedges.js";
+import { buildWedges, pointToWedge, type Point, type Wedge } from "./wedges.js";
 
 export interface TrajectoryStep {
   /** "spin" or "shoot" — controls renderer behaviour. */
@@ -146,32 +146,7 @@ export function resolveWinner(
 ): { wedges: Wedge[]; winner: Wedge; result: TrajectoryResult } {
   const wedges = buildWedges(players, potNano);
   const result = simulateTrajectory(trajectorySeedHex);
-  const winner = wedgeContainingPoint(result.resting, wedges);
+  const winner = pointToWedge(result.resting, wedges);
   if (!winner) throw new Error("no wedges to resolve winner");
   return { wedges, winner, result };
-}
-
-function wedgeContainingPoint(p: Point, wedges: Wedge[]): Wedge | null {
-  if (wedges.length === 0) return null;
-  if (wedges.length === 1) return wedges[0]!;
-  // Project ray from origin through p to the perimeter, then arc-length lookup.
-  const ax = Math.abs(p.x);
-  const ay = Math.abs(p.y);
-  if (ax < 1e-9 && ay < 1e-9) return wedges[0]!;
-  const k = HALF / Math.max(ax, ay);
-  const px = p.x * k;
-  const py = p.y * k;
-  const SIDE = HALF * 2;
-  const eps = 1e-4;
-  let arc: number;
-  if (Math.abs(py + HALF) < eps) arc = px + HALF;
-  else if (Math.abs(px - HALF) < eps) arc = SIDE + (py + HALF);
-  else if (Math.abs(py - HALF) < eps) arc = SIDE * 2 + (HALF - px);
-  else if (Math.abs(px + HALF) < eps) arc = SIDE * 3 + (HALF - py);
-  else return wedges[0]!;
-  arc = ((arc % PERIMETER_LEN) + PERIMETER_LEN) % PERIMETER_LEN;
-  for (const w of wedges) {
-    if (arc >= w.startArc - eps && arc < w.endArc + eps) return w;
-  }
-  return wedges[wedges.length - 1]!;
 }

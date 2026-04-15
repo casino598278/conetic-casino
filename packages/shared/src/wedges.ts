@@ -1,37 +1,35 @@
-// Square-perimeter wedge math.
+// Corner-triangle arena layout (Portals-style).
 //
-// The arena is a square centered at (0,0) with half-side `h`. Perimeter length = 8h.
-// Players sorted by userId (stable). Each gets an arc-length slice of the perimeter
-// proportional to their stake. A wedge is the polygon from (0,0) walking the perimeter
-// from arcStart to arcEnd, inserting a vertex at every corner crossed.
+// The dominant player (largest stake) owns the full arena background.
+// Other players each get a corner triangle whose AREA = their stake fraction of the arena.
+// Up to 4 players in corners (TL, TR, BR, BL), sorted by stake DESC.
+// Extra players (5+) currently share the 4th corner or are stacked — for v1 we cap at 4
+// visible corner slots and collapse the rest into the dominant region (they still win
+// proportionally since the ball's landing point is mapped via perimeter arc length).
 
 import { ARENA, PlayerEntry } from "./game.js";
 
 export interface Wedge {
   userId: string;
-  startArc: number;       // [0, P)
-  endArc: number;         // (startArc, P]
-  fraction: number;       // stake / pot
-  polygon: Point[];       // [center, ...perimeterVertices]
-  centroid: Point;        // for avatar placement
+  startArc: number;
+  endArc: number;
+  fraction: number;
+  polygon: Point[];
+  centroid: Point;
+  /** Corner index 0..3 (TL, TR, BR, BL) or -1 if this is the dominant (fill) wedge. */
+  corner: number;
 }
 
-export interface Point {
-  x: number;
-  y: number;
-}
+export interface Point { x: number; y: number; }
 
 const HALF = ARENA.HALF_SIDE;
 const SIDE = HALF * 2;
 const PERIMETER = SIDE * 4;
+export const PERIMETER_LEN = PERIMETER;
 
 /**
  * Map an arc-length s in [0, PERIMETER) to a perimeter point.
  * Origin = top-left corner (-h, -h). Walks clockwise.
- *   side 0: top edge,    s in [0, SIDE),  point = (-h + s, -h)
- *   side 1: right edge,  s in [SIDE, 2S), point = (h, -h + (s - SIDE))
- *   side 2: bottom edge, s in [2S, 3S),   point = (h - (s - 2S), h)
- *   side 3: left edge,   s in [3S, 4S),   point = (-h, h - (s - 3S))
  */
 export function arcToPoint(s: number): Point {
   const t = ((s % PERIMETER) + PERIMETER) % PERIMETER;
@@ -41,119 +39,149 @@ export function arcToPoint(s: number): Point {
   return { x: -HALF, y: HALF - (t - SIDE * 3) };
 }
 
-/** Inverse of arcToPoint for a perimeter point. */
 export function pointToArc(p: Point): number {
   const eps = 1e-9;
-  if (Math.abs(p.y + HALF) < eps && p.x >= -HALF - eps && p.x <= HALF + eps) {
-    return p.x + HALF;
-  }
-  if (Math.abs(p.x - HALF) < eps && p.y >= -HALF - eps && p.y <= HALF + eps) {
-    return SIDE + (p.y + HALF);
-  }
-  if (Math.abs(p.y - HALF) < eps && p.x >= -HALF - eps && p.x <= HALF + eps) {
-    return SIDE * 2 + (HALF - p.x);
-  }
-  if (Math.abs(p.x + HALF) < eps && p.y >= -HALF - eps && p.y <= HALF + eps) {
-    return SIDE * 3 + (HALF - p.y);
-  }
-  // Not on perimeter — project to nearest edge by clamping ray from origin.
+  if (Math.abs(p.y + HALF) < eps && p.x >= -HALF - eps && p.x <= HALF + eps) return p.x + HALF;
+  if (Math.abs(p.x - HALF) < eps && p.y >= -HALF - eps && p.y <= HALF + eps) return SIDE + (p.y + HALF);
+  if (Math.abs(p.y - HALF) < eps && p.x >= -HALF - eps && p.x <= HALF + eps) return SIDE * 2 + (HALF - p.x);
+  if (Math.abs(p.x + HALF) < eps && p.y >= -HALF - eps && p.y <= HALF + eps) return SIDE * 3 + (HALF - p.y);
   const ax = Math.abs(p.x);
   const ay = Math.abs(p.y);
-  if (ax > ay) {
-    const k = HALF / ax;
-    return pointToArc({ x: p.x * k, y: p.y * k });
-  } else {
-    const k = HALF / ay;
-    return pointToArc({ x: p.x * k, y: p.y * k });
-  }
-}
-
-/** Cumulative arc-length cuts, sorted by stake-derived order. */
-export function buildWedges(players: PlayerEntry[], potNano: bigint): Wedge[] {
-  if (players.length === 0 || potNano === 0n) return [];
-
-  // Stable order: by userId asc.
-  const sorted = [...players].sort((a, b) => (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
-
-  // Compute integer arc lengths in micro-units to avoid float drift, then scale.
-  const SCALE = 1_000_000n;
-  const cumNano: bigint[] = [];
-  let acc = 0n;
-  for (const p of sorted) {
-    acc += BigInt(p.stakeNano);
-    cumNano.push(acc);
-  }
-
-  const wedges: Wedge[] = [];
-  let prevArc = 0;
-  for (let i = 0; i < sorted.length; i++) {
-    const p = sorted[i]!;
-    const cum = cumNano[i]!;
-    const fraction = Number((cum * SCALE) / potNano) / Number(SCALE);
-    const endArc = i === sorted.length - 1 ? PERIMETER : fraction * PERIMETER;
-    const polygon = wedgePolygon(prevArc, endArc);
-    const stakeFrac = Number(BigInt(p.stakeNano) * SCALE / potNano) / Number(SCALE);
-    // Place avatar at the wedge's true centroid (visual centre of mass).
-    const centroid = wedgeAvatarPoint(polygon, prevArc, endArc, stakeFrac);
-    wedges.push({
-      userId: p.userId,
-      startArc: prevArc,
-      endArc,
-      fraction: stakeFrac,
-      polygon,
-      centroid,
-    });
-    prevArc = endArc;
-  }
-  return wedges;
+  const k = HALF / Math.max(ax, ay);
+  return pointToArc({ x: p.x * k, y: p.y * k });
 }
 
 /**
- * Visual centre of the wedge for avatar placement.
- *
- * Strategy: use the polygon's geometric centroid (true centre of mass), but
- * blend slightly toward the perimeter midpoint — that keeps avatars away from
- * the arena origin where all wedges meet at a point, which would cause them
- * to crowd each other.
+ * Build corner-triangle wedges. Dominant player gets the full arena as a
+ * "background" wedge; the next 3 players get corner triangles.
+ * The WIN region mapping uses perimeter arc length so the ball's landing
+ * point maps back to a wedge proportional to stake — matching the
+ * visible triangle AREA for corners, and the remaining perimeter for the
+ * dominant player.
  */
-function wedgeAvatarPoint(
-  polygon: Point[],
-  startArc: number,
-  endArc: number,
-  fraction: number,
-): Point {
-  // Single full wedge (one player owns 100%) → arena centre.
-  if (fraction >= 0.999) return { x: 0, y: 0 };
+export function buildWedges(players: PlayerEntry[], potNano: bigint): Wedge[] {
+  if (players.length === 0 || potNano === 0n) return [];
 
-  const c = wedgeCentroid(polygon);
-  const midArc = (startArc + endArc) / 2;
-  const perim = arcToPoint(midArc);
-  // Blend the centroid toward the perimeter midpoint by a small factor.
-  // Tiny wedges blend MORE (their centroid is near the origin, push outward).
-  // Big wedges blend LESS (their centroid is already a great visual centre).
-  const blend = 0.25 + (1 - Math.min(1, fraction * 1.4)) * 0.25;
-  return {
-    x: c.x * (1 - blend) + perim.x * blend,
-    y: c.y * (1 - blend) + perim.y * blend,
-  };
-}
+  // Sort by userId first (stable for reproducibility), then we'll rank by stake DESC.
+  const byStake = [...players].sort((a, b) => {
+    const sa = BigInt(a.stakeNano);
+    const sb = BigInt(b.stakeNano);
+    if (sa !== sb) return sb > sa ? 1 : -1;
+    return a.userId < b.userId ? -1 : 1;
+  });
 
-/** Polygon = [center, perim(start), corners crossed..., perim(end)] */
-export function wedgePolygon(startArc: number, endArc: number): Point[] {
-  const pts: Point[] = [{ x: 0, y: 0 }];
-  pts.push(arcToPoint(startArc));
-  // corners are at multiples of SIDE
-  const cornerArcs = [SIDE, SIDE * 2, SIDE * 3, SIDE * 4];
-  for (const c of cornerArcs) {
-    if (c > startArc + 1e-9 && c < endArc - 1e-9) {
-      pts.push(arcToPoint(c));
-    }
+  const SCALE = 1_000_000n;
+  const fractionOf = (p: PlayerEntry) =>
+    Number((BigInt(p.stakeNano) * SCALE) / potNano) / Number(SCALE);
+
+  // Single player: full arena.
+  if (byStake.length === 1) {
+    const p = byStake[0]!;
+    return [{
+      userId: p.userId,
+      startArc: 0,
+      endArc: PERIMETER,
+      fraction: 1,
+      polygon: squarePolygon(),
+      centroid: { x: 0, y: 0 },
+      corner: -1,
+    }];
   }
-  pts.push(arcToPoint(endArc));
-  return pts;
+
+  // Assign corners to all non-dominant players (top 4 by stake after dominant).
+  // Remaining players (rank > 4) fall back to sharing the dominant region.
+  const dominant = byStake[0]!;
+  const dominantFrac = fractionOf(dominant);
+
+  // Corner order: TL, TR, BR, BL
+  const CORNERS = [
+    { cx: -HALF, cy: -HALF, signX: 1,  signY: 1,  arcStart: 0 },               // TL
+    { cx:  HALF, cy: -HALF, signX: -1, signY: 1,  arcStart: SIDE },             // TR
+    { cx:  HALF, cy:  HALF, signX: -1, signY: -1, arcStart: SIDE * 2 },          // BR
+    { cx: -HALF, cy:  HALF, signX: 1,  signY: -1, arcStart: SIDE * 3 },          // BL
+  ];
+
+  // Players 1..4 (by stake rank) take the 4 corners. Player 0 (dominant) is the background.
+  const wedges: Wedge[] = [];
+  // The dominant wedge fills the whole arena perimeter; corner wedges overwrite pieces of it.
+  wedges.push({
+    userId: dominant.userId,
+    startArc: 0,
+    endArc: PERIMETER,
+    fraction: dominantFrac,
+    polygon: squarePolygon(),
+    centroid: { x: 0, y: 0 },
+    corner: -1,
+  });
+
+  const cornerPlayers = byStake.slice(1, 5);
+  for (let i = 0; i < cornerPlayers.length; i++) {
+    const p = cornerPlayers[i]!;
+    const c = CORNERS[i]!;
+    const f = fractionOf(p);
+    // Corner triangle side length so AREA = f * arenaArea.
+    // Triangle area = 0.5 * s^2.  arena area = (2h)^2 = 4h^2.
+    // 0.5 * s^2 = f * 4h^2  =>  s = sqrt(8 * f) * h
+    const s = Math.min(SIDE, Math.sqrt(8 * f) * HALF);
+    const polygon: Point[] = [
+      { x: c.cx,                 y: c.cy },
+      { x: c.cx + c.signX * s,   y: c.cy },
+      { x: c.cx,                 y: c.cy + c.signY * s },
+    ];
+    const centroid: Point = {
+      x: c.cx + c.signX * s * 0.33,
+      y: c.cy + c.signY * s * 0.33,
+    };
+    // Corner wedge owns arc length f*PERIMETER starting from corner.
+    const startArc = c.arcStart;
+    const endArc = c.arcStart + f * PERIMETER;
+    wedges.push({
+      userId: p.userId,
+      startArc,
+      endArc,
+      fraction: f,
+      polygon,
+      centroid,
+      corner: i,
+    });
+  }
+
+  return wedges;
 }
 
-/** Geometric centroid of a polygon. */
+/** Full arena square polygon. */
+function squarePolygon(): Point[] {
+  return [
+    { x: -HALF, y: -HALF },
+    { x:  HALF, y: -HALF },
+    { x:  HALF, y:  HALF },
+    { x: -HALF, y:  HALF },
+  ];
+}
+
+/** Which wedge does a point fall in? Corners first, then dominant. */
+export function pointToWedge(p: Point, wedges: Wedge[]): Wedge | null {
+  if (wedges.length === 0) return null;
+  if (wedges.length === 1) return wedges[0]!;
+  for (const w of wedges) {
+    if (w.corner >= 0 && pointInPolygon(p, w.polygon)) return w;
+  }
+  return wedges.find((w) => w.corner === -1) ?? wedges[0]!;
+}
+
+function pointInPolygon(p: Point, poly: Point[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i]!;
+    const b = poly[j]!;
+    const intersect =
+      (a.y > p.y) !== (b.y > p.y) &&
+      p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 export function wedgeCentroid(polygon: Point[]): Point {
   let area = 0;
   let cx = 0;
@@ -167,24 +195,6 @@ export function wedgeCentroid(polygon: Point[]): Point {
     cy += (a.y + b.y) * cross;
   }
   area *= 0.5;
-  if (Math.abs(area) < 1e-12) {
-    // Degenerate (single-player full circle): return midway from center to perim midpoint.
-    const mid = polygon[Math.floor(polygon.length / 2)] ?? { x: 0, y: 0 };
-    return { x: mid.x * 0.5, y: mid.y * 0.5 };
-  }
+  if (Math.abs(area) < 1e-12) return { x: 0, y: 0 };
   return { x: cx / (6 * area), y: cy / (6 * area) };
 }
-
-/** Find which wedge contains point p. Returns null if no wedges. */
-export function pointToWedge(p: Point, wedges: Wedge[]): Wedge | null {
-  if (wedges.length === 0) return null;
-  if (wedges.length === 1) return wedges[0]!;
-  // Project ray from center to perimeter through p, take the arc.
-  const arc = pointToArc(p);
-  for (const w of wedges) {
-    if (arc >= w.startArc - 1e-9 && arc < w.endArc + 1e-9) return w;
-  }
-  return wedges[wedges.length - 1]!;
-}
-
-export const PERIMETER_LEN = PERIMETER;

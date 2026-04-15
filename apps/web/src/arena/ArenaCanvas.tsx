@@ -3,7 +3,6 @@ import { Application, Container, Graphics, Sprite, Text, Texture } from "pixi.js
 import {
   ARENA,
   buildWedges,
-  PERIMETER_LEN,
   simulateTrajectory,
   type LobbySnapshot,
   type RoundResult,
@@ -153,12 +152,22 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
       st.wedgeContainer.removeChildren();
       st.avatarContainer.removeChildren();
 
-      // Pass 1: wedge fills (no border)
-      for (const w of wedges) {
+      // Pass 1: wedge fills. Dominant fills full arena; corners overlay triangles.
+      // Render dominant FIRST so corners paint over.
+      const dominant = wedges.find((w) => w.corner === -1);
+      const corners = wedges.filter((w) => w.corner >= 0);
+      if (dominant) {
+        const color = colorForUser(dominant.userId);
+        const g = new Graphics();
+        g.poly(dominant.polygon.map((pt) => ({ x: pt.x * PIX_PER_UNIT, y: pt.y * PIX_PER_UNIT })));
+        g.fill({ color, alpha: 0.92 });
+        st.wedgeContainer.addChild(g);
+      }
+      for (const w of corners) {
         const color = colorForUser(w.userId);
         const g = new Graphics();
         g.poly(w.polygon.map((pt) => ({ x: pt.x * PIX_PER_UNIT, y: pt.y * PIX_PER_UNIT })));
-        g.fill({ color, alpha: 0.96 });
+        g.fill({ color, alpha: 0.95 });
         st.wedgeContainer.addChild(g);
       }
 
@@ -385,8 +394,17 @@ async function placeAvatar(
   if (epoch !== st.renderEpoch) return;
   const cx = wedge.centroid.x * PIX_PER_UNIT;
   const cy = wedge.centroid.y * PIX_PER_UNIT;
-  // Scale avatar with wedge size — small wedges get small avatars (down to 22px).
-  const sizePx = Math.min(120, Math.max(22, Math.sqrt(wedge.fraction) * 160));
+  // Size strategy:
+  //   - dominant (corner === -1): big centred avatar, scaled by their share
+  //   - corner triangles: small avatar that fits inside the triangle
+  let sizePx: number;
+  if (wedge.corner === -1) {
+    sizePx = Math.min(180, Math.max(90, Math.sqrt(wedge.fraction) * 210));
+  } else {
+    // Triangle side length in pixels = sqrt(8*f)*HALF*PIX; max avatar ≈ 0.5× that.
+    const triSidePx = Math.sqrt(8 * wedge.fraction) * ARENA.HALF_SIDE * PIX_PER_UNIT;
+    sizePx = Math.min(70, Math.max(16, triSidePx * 0.5));
+  }
 
   const container = new Container();
   container.position.set(cx, cy);
@@ -497,32 +515,29 @@ function clearOverlay(st: ArenaState) {
   }
 }
 
-/** Project ball pixel position to the perimeter, find the wedge whose arc contains it. */
+/** Find the wedge whose polygon contains the ball's pixel position. */
 function wedgeAt(wedges: Wedge[], step: { x: number; y: number }): Wedge | null {
   if (wedges.length === 0) return null;
   if (wedges.length === 1) return wedges[0]!;
-  // Convert pixel back to logical [-1,1].
   const x = step.x / PIX_PER_UNIT;
   const y = step.y / PIX_PER_UNIT;
-  // Project ray from origin through (x,y) to the square edge.
-  const ax = Math.abs(x);
-  const ay = Math.abs(y);
-  if (ax < 1e-6 && ay < 1e-6) return wedges[0]!;
-  const k = ARENA.HALF_SIDE / Math.max(ax, ay);
-  const px = x * k;
-  const py = y * k;
-  const HALF = ARENA.HALF_SIDE;
-  const SIDE = HALF * 2;
-  let arc: number;
-  const eps = 1e-4;
-  if (Math.abs(py + HALF) < eps) arc = px + HALF;
-  else if (Math.abs(px - HALF) < eps) arc = SIDE + (py + HALF);
-  else if (Math.abs(py - HALF) < eps) arc = SIDE * 2 + (HALF - px);
-  else if (Math.abs(px + HALF) < eps) arc = SIDE * 3 + (HALF - py);
-  else return null;
-  arc = ((arc % PERIMETER_LEN) + PERIMETER_LEN) % PERIMETER_LEN;
+  // Prefer a corner triangle if the point is inside one.
   for (const w of wedges) {
-    if (arc >= w.startArc - 1e-4 && arc < w.endArc + 1e-4) return w;
+    if (w.corner >= 0 && pointInPolygon({ x, y }, w.polygon)) return w;
   }
-  return wedges[wedges.length - 1]!;
+  // Fall back to the dominant / full-arena wedge.
+  return wedges.find((w) => w.corner === -1) ?? wedges[0]!;
+}
+
+function pointInPolygon(p: { x: number; y: number }, poly: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i]!;
+    const b = poly[j]!;
+    const intersect =
+      (a.y > p.y) !== (b.y > p.y) &&
+      p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x;
+    if (intersect) inside = !inside;
+  }
+  return inside;
 }

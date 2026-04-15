@@ -3,12 +3,13 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:    #0d0d0d;
+  /* Flat dark grey — zero hue. Consistent on every Telegram theme. */
+  --bg:    #101010;
   --s1:    #161616;
-  --s2:    #1e1e1e;
-  --s3:    #252525;
+  --s2:    #1c1c1c;
+  --s3:    #242424;
   --b1:    #2a2a2a;
-  --b2:    #363636;
+  --b2:    #333333;
   --blue:   #f5c14b;
   --blue-d: #d9a93b;
   --blue-l: #ffd76e;
