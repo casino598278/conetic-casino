@@ -218,6 +218,36 @@ input, textarea { font-family: inherit; }
   font-variant-numeric: tabular-nums;
 }
 
+.hash-row {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 10px;
+}
+.hash-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--s2);
+  border: 1px solid var(--b1);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--t3);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.hash-pill span {
+  color: var(--t2);
+  font-weight: 600;
+}
+.hash-pill:hover {
+  background: var(--s3);
+  color: var(--text);
+  border-color: var(--b2);
+}
+.hash-pill svg { color: var(--t3); }
+
 .player-row {
   display: flex;
   align-items: center;

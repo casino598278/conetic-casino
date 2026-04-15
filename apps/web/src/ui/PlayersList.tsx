@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { LobbySnapshot } from "@conetic/shared";
 import { colorForUser } from "../arena/colors";
 
@@ -15,6 +16,33 @@ function fmtTon(nanoStr: string): string {
   return fracStr ? `${whole}.${fracStr}` : `${whole}`;
 }
 
+function HashPill({ hash }: { hash: string | null }) {
+  const [copied, setCopied] = useState(false);
+  if (!hash) return null;
+  const short = `${hash.slice(0, 4)}…${hash.slice(-4)}`;
+  const copy = () => {
+    navigator.clipboard?.writeText(hash).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    });
+  };
+  return (
+    <button className="hash-pill" type="button" onClick={copy} title="Server seed commit hash">
+      Hash: <span>{short}</span>
+      {copied ? (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      ) : (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export function PlayersList({ snapshot }: Props) {
   if (!snapshot || snapshot.players.length === 0) {
     return (
@@ -23,9 +51,8 @@ export function PlayersList({ snapshot }: Props) {
           <h2>Players · 0</h2>
           <span className="meta">Game #{snapshot?.roundId ?? "—"}</span>
         </div>
-        <div className="empty">
-          Stake to join the round.<br />
-          Round starts when 2+ players are in.
+        <div className="hash-row">
+          <HashPill hash={snapshot?.serverSeedHash ?? null} />
         </div>
       </div>
     );
@@ -36,6 +63,9 @@ export function PlayersList({ snapshot }: Props) {
       <div className="players-header">
         <h2>Players · {snapshot.players.length}</h2>
         <span className="meta">Game #{snapshot.roundId}</span>
+      </div>
+      <div className="hash-row">
+        <HashPill hash={snapshot.serverSeedHash} />
       </div>
       {snapshot.players.map((p) => {
         const stake = BigInt(p.stakeNano);

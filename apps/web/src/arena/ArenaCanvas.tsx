@@ -144,6 +144,7 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
         st.ball = null;
         st.arrow = null;
         st.ballLabel = null;
+        drawEmptyState(st);
         return;
       }
 
@@ -513,6 +514,39 @@ function clearOverlay(st: ArenaState) {
     st.overlayContainer.removeChild(st.winnerOverlay);
     st.winnerOverlay = null;
   }
+}
+
+/** Draw a subtle grid + "Waiting for players..." text when no round is active. */
+function drawEmptyState(st: ArenaState) {
+  const GRID_STEP = 30;
+  const ALPHA = 0.08;
+  const side = PIX_PER_UNIT; // half side in px
+
+  const g = new Graphics();
+  // Vertical lines
+  for (let x = -side; x <= side; x += GRID_STEP) {
+    g.moveTo(x, -side).lineTo(x, side);
+  }
+  // Horizontal lines
+  for (let y = -side; y <= side; y += GRID_STEP) {
+    g.moveTo(-side, y).lineTo(side, y);
+  }
+  g.stroke({ color: 0xffffff, width: 1, alpha: ALPHA });
+  st.wedgeContainer.addChild(g);
+
+  // Centered text
+  const text = new Text({
+    text: "Waiting for players…",
+    style: {
+      fontSize: 18,
+      fontWeight: "600",
+      fill: 0x787878,
+      align: "center",
+    },
+  });
+  text.anchor.set(0.5);
+  text.position.set(0, 0);
+  st.wedgeContainer.addChild(text);
 }
 
 /** Find the wedge whose polygon contains the ball's pixel position. */
