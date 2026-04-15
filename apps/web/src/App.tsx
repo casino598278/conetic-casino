@@ -3,7 +3,9 @@ import { ArenaCanvas } from "./arena/ArenaCanvas";
 import { BetBar } from "./ui/BetBar";
 import { PlayersList } from "./ui/PlayersList";
 import { WalletSheet } from "./ui/WalletSheet";
-import { WinCard } from "./ui/WinCard";
+import { WinScreen } from "./ui/WinScreen";
+import { GamePills } from "./ui/GamePills";
+import { HistoryModal } from "./ui/HistoryModal";
 import { useLobbyStore } from "./state/lobbyStore";
 import { useWalletStore } from "./state/walletStore";
 import { api, login } from "./net/api";
@@ -47,10 +49,12 @@ export default function App() {
   const setBalance = useWalletStore((s) => s.setBalance);
 
   const [showWallet, setShowWallet] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
-  const [winCardVisible, setWinCardVisible] = useState(false);
+  const [winScreenVisible, setWinScreenVisible] = useState(false);
+  const [pillsRefreshKey, setPillsRefreshKey] = useState(0);
 
   // Version watch — hard-reload if backend deployed a new build.
   useEffect(() => {
@@ -126,13 +130,16 @@ export default function App() {
     setTimeout(() => setToast(null), 2500);
   };
 
-  // Show the win card after the spin animation completes (~9.3s after RoundLive).
+  // Show the win screen after the spin animation completes (~9.3s after RoundLive).
   useEffect(() => {
     if (!lastResult) {
-      setWinCardVisible(false);
+      setWinScreenVisible(false);
       return;
     }
-    const t = setTimeout(() => setWinCardVisible(true), 9300);
+    const t = setTimeout(() => {
+      setWinScreenVisible(true);
+      setPillsRefreshKey((k) => k + 1);
+    }, 9300);
     return () => clearTimeout(t);
   }, [lastResult]);
 
@@ -150,7 +157,19 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Conetic Casino</h1>
+        <button
+          className="header-icon-btn"
+          onClick={() => setShowHistory(true)}
+          aria-label="Game history"
+          type="button"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+        </button>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {!wsConnected && <span className="ws-disconnected" title="Reconnecting…" />}
           <button className="balance-pill" onClick={() => setShowWallet(true)}>
@@ -159,8 +178,10 @@ export default function App() {
         </div>
       </header>
 
+      <GamePills refreshKey={pillsRefreshKey} onOpenHistory={() => setShowHistory(true)} />
+
       <div className="pot-row">
-        <div>Pot <strong>{fmtTon(pot)}</strong> TON</div>
+        <div>Total <strong>{fmtTon(pot)}</strong> TON</div>
         <div>
           {isLive ? (
             <span className="live">LIVE</span>
@@ -200,17 +221,22 @@ export default function App() {
       </div>
 
       {showWallet && <WalletSheet onClose={() => setShowWallet(false)} />}
+      {showHistory && <HistoryModal onClose={() => setShowHistory(false)} />}
 
-      {winCardVisible && lastResult && snapshot && (() => {
+      {winScreenVisible && lastResult && snapshot && (() => {
         const winnerPlayer = snapshot.players.find((p) => p.userId === lastResult.winnerUserId);
         const username = winnerPlayer?.username ? `@${winnerPlayer.username}` : winnerPlayer?.firstName ?? "Winner";
+        const stake = winnerPlayer ? BigInt(winnerPlayer.stakeNano) : 0n;
+        const payout = BigInt(lastResult.winnerPayoutNano);
+        const mult = stake > 0n ? Number(payout) / Number(stake) : 0;
         return (
-          <WinCard
+          <WinScreen
             username={username}
             payoutNano={lastResult.winnerPayoutNano}
+            multiplier={mult}
             photoUrl={winnerPlayer?.photoUrl ?? null}
             isMe={lastResult.winnerUserId === user?.id}
-            onDone={() => setWinCardVisible(false)}
+            onClose={() => setWinScreenVisible(false)}
           />
         );
       })()}

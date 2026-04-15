@@ -124,3 +124,55 @@ export function recentResolvedRounds(limit = 25): RoundRow[] {
     .prepare("SELECT * FROM rounds WHERE status = 'RESOLVED' ORDER BY id DESC LIMIT ?")
     .all(limit) as RoundRow[];
 }
+
+/** Round with the largest winner_payout_nano. */
+export function topResolvedRound(): RoundRow | null {
+  return (db
+    .prepare(
+      `SELECT * FROM rounds WHERE status = 'RESOLVED' AND winner_payout_nano IS NOT NULL
+       ORDER BY CAST(winner_payout_nano AS INTEGER) DESC LIMIT 1`,
+    )
+    .get() as RoundRow | undefined) ?? null;
+}
+
+/** Most recent resolved round. */
+export function lastResolvedRound(): RoundRow | null {
+  return (db
+    .prepare(`SELECT * FROM rounds WHERE status = 'RESOLVED' ORDER BY id DESC LIMIT 1`)
+    .get() as RoundRow | undefined) ?? null;
+}
+
+/** Rounds where a specific user placed a bet (player history). */
+export function roundsForUser(userId: string, limit = 25): RoundRow[] {
+  return db
+    .prepare(
+      `SELECT r.* FROM rounds r
+       INNER JOIN bets b ON b.round_id = r.id
+       WHERE b.user_id = ? AND r.status = 'RESOLVED'
+       ORDER BY r.id DESC LIMIT ?`,
+    )
+    .all(userId, limit) as RoundRow[];
+}
+
+/** Rounds sorted by multiplier (winner_payout / winner_stake). Approximate "luckiest". */
+export function luckiestRounds(limit = 25): RoundRow[] {
+  return db
+    .prepare(
+      `SELECT r.* FROM rounds r
+       INNER JOIN bets b ON b.round_id = r.id AND b.user_id = r.winner_user_id
+       WHERE r.status = 'RESOLVED' AND r.winner_payout_nano IS NOT NULL
+       ORDER BY (CAST(r.winner_payout_nano AS REAL) / CAST(b.amount_nano AS REAL)) DESC
+       LIMIT ?`,
+    )
+    .all(limit) as RoundRow[];
+}
+
+/** Rounds sorted by absolute pot size. */
+export function biggestRounds(limit = 25): RoundRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM rounds WHERE status = 'RESOLVED'
+       ORDER BY CAST(pot_nano AS INTEGER) DESC LIMIT ?`,
+    )
+    .all(limit) as RoundRow[];
+}

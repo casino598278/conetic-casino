@@ -3,7 +3,7 @@ import { Application, Container, Graphics, Sprite, Text, Texture } from "pixi.js
 import {
   ARENA,
   buildWedges,
-  initSpawnFromSeed,
+  PERIMETER_LEN,
   simulateTrajectory,
   type LobbySnapshot,
   type RoundResult,
@@ -25,11 +25,12 @@ const PIX_PER_UNIT = 180; // logical [-1,1] → 360px
 interface ArenaState {
   wedgeContainer: Container;     // wedge fills (bottom layer)
   avatarContainer: Container;    // avatars on top of wedges
-  ballContainer: Container;      // centre ball + pointer
+  ballContainer: Container;      // moving ball + username label
   overlayContainer: Container;   // winner reveal
   wedges: Wedge[];
-  ball: Container | null;        // centre ball graphic + glow
-  pointer: Graphics | null;      // rotating white arrow
+  ball: Container | null;
+  ballHighlight: Graphics | null; // rotating tick mark inside the ball
+  ballLabel: Text | null;         // username text above the ball
   winnerOverlay: Container | null;
   rafSpin: number | null;
   rafZoom: number | null;
@@ -79,7 +80,8 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
           overlayContainer,
           wedges: [],
           ball: null,
-          pointer: null,
+          ballHighlight: null,
+          ballLabel: null,
           winnerOverlay: null,
           rafSpin: null,
           rafZoom: null,
@@ -124,10 +126,13 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
           st.ball.position.set(0, 0);
           st.ball.scale.set(0.4);
         }
-        if (st.pointer) {
-          st.pointer.alpha = 0;
-          st.pointer.position.set(0, 0);
-          st.pointer.rotation = 0;
+        if (st.ballHighlight) {
+          st.ballHighlight.alpha = 0;
+          st.ballHighlight.rotation = 0;
+        }
+        if (st.ballLabel) {
+          st.ballLabel.visible = false;
+          st.ballLabel.text = "";
         }
       }
 
@@ -137,7 +142,8 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
         st.ballContainer.removeChildren();
         st.wedges = [];
         st.ball = null;
-        st.pointer = null;
+        st.ballHighlight = null;
+        st.ballLabel = null;
         return;
       }
 
@@ -169,7 +175,7 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
     }
   }, [snapshot]);
 
-  // Run pointer spin animation
+  // Run ball orbit animation
   useEffect(() => {
     const st = stateRef.current;
     if (!st || !trajectorySeed || liveStartedAt == null) return;
@@ -178,65 +184,77 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
     clearOverlay(st);
     ensureBall(st);
 
-    // Place the ball at a deterministic random spawn point inside the arena.
-    const spawn = initSpawnFromSeed(trajectorySeed);
-    const spawnPx = { x: spawn.x * PIX_PER_UNIT, y: spawn.y * PIX_PER_UNIT };
+    // Pre-compute pixel-space steps.
+    const stepsPx = traj.steps.map((s) => ({ x: s.x * PIX_PER_UNIT, y: s.y * PIX_PER_UNIT, angle: s.angle, t: s.t }));
+
     if (st.ball) {
-      st.ball.position.set(spawnPx.x, spawnPx.y);
-      st.ball.visible = false;
-      st.ball.scale.set(0.4); // pop in
+      const first = stepsPx[0]!;
+      st.ball.position.set(first.x, first.y);
+      st.ball.visible = true;
+      st.ball.scale.set(0.5);
     }
-    if (st.pointer) {
-      st.pointer.position.set(spawnPx.x, spawnPx.y);
-      st.pointer.alpha = 1;
+    if (st.ballHighlight) st.ballHighlight.alpha = 1;
+    if (st.ballLabel) {
+      st.ballLabel.visible = true;
+      st.ballLabel.position.set(stepsPx[0]!.x, stepsPx[0]!.y - 30);
     }
 
     if (st.rafSpin) cancelAnimationFrame(st.rafSpin);
     const startWall = performance.now();
     const totalMs = traj.durationMs;
-    // Reveal ball during the last ~25% of the spin, zoom toward it during last ~35%.
-    const ballRevealAt = totalMs * 0.7;
-    const zoomStartAt = totalMs * 0.55;
+    // Ball pop-in over first 600ms.
+    const POP_IN = 600;
 
     const animate = () => {
       const elapsed = performance.now() - startWall;
-      const idx = Math.min(traj.steps.length - 1, Math.floor(elapsed / ARENA.SIM_DT_MS));
-      const step = traj.steps[idx]!;
-      if (st.pointer) st.pointer.rotation = step.angle;
+      const idx = Math.min(stepsPx.length - 1, Math.floor(elapsed / ARENA.SIM_DT_MS));
+      const step = stepsPx[idx]!;
 
-      // Late ball spawn — fades + scales in
       if (st.ball) {
-        if (elapsed >= ballRevealAt) {
-          st.ball.visible = true;
-          const t = Math.min(1, (elapsed - ballRevealAt) / Math.max(1, totalMs - ballRevealAt));
-          const eased = 1 - Math.pow(1 - t, 3);
-          st.ball.scale.set(0.4 + eased * 0.6); // 0.4 → 1.0
+        st.ball.position.set(step.x, step.y);
+        if (elapsed < POP_IN) {
+          const t = elapsed / POP_IN;
+          st.ball.scale.set(0.5 + (1 - Math.pow(1 - t, 3)) * 0.5);
+        } else if (st.ball.scale.x < 1) {
+          st.ball.scale.set(1);
+        }
+      }
+      if (st.ballHighlight) st.ballHighlight.rotation = step.angle;
+
+      // Update label to show username of the wedge currently under the ball.
+      if (st.ballLabel) {
+        st.ballLabel.position.set(step.x, step.y - (ARENA.BALL_RADIUS * PIX_PER_UNIT + 12));
+        const wedge = wedgeAt(st.wedges, step);
+        if (wedge && snapshot) {
+          const player = snapshot.players.find((p) => p.userId === wedge.userId);
+          const name = player?.username ? `@${player.username}` : player?.firstName ?? "";
+          if (st.ballLabel.text !== name) st.ballLabel.text = name;
         }
       }
 
-      // Camera zoom toward the ball as spin decelerates.
-      if (elapsed >= zoomStartAt) {
-        const z = Math.min(1, (elapsed - zoomStartAt) / Math.max(1, totalMs - zoomStartAt));
+      // Gentle camera zoom on the ball over the last 40% of the spin.
+      const zoomStart = totalMs * 0.6;
+      if (elapsed >= zoomStart) {
+        const z = Math.min(1, (elapsed - zoomStart) / Math.max(1, totalMs - zoomStart));
         const eased = 1 - Math.pow(1 - z, 3);
-        const scale = 1 + eased * 0.9;             // 1 → 1.9
-        const tx = -spawnPx.x * eased;
-        const ty = -spawnPx.y * eased;
+        const scale = 1 + eased * 0.55;
+        const tx = -step.x * eased;
+        const ty = -step.y * eased;
         for (const c of [st.wedgeContainer, st.avatarContainer, st.ballContainer]) {
           c.scale.set(scale);
           c.position.set(PIX_PER_UNIT + tx * scale, PIX_PER_UNIT + ty * scale);
         }
       }
 
-      if (idx >= traj.steps.length - 1) { st.rafSpin = null; return; }
+      if (idx >= stepsPx.length - 1) { st.rafSpin = null; return; }
       st.rafSpin = requestAnimationFrame(animate);
     };
     st.rafSpin = requestAnimationFrame(animate);
 
     return () => {
       if (st.rafSpin) cancelAnimationFrame(st.rafSpin);
-      // Don't reset transforms here — winner reveal effect handles that.
     };
-  }, [trajectorySeed, liveStartedAt]);
+  }, [trajectorySeed, liveStartedAt, snapshot]);
 
   // Winner reveal
   useEffect(() => {
@@ -278,8 +296,8 @@ function ensureBall(st: ArenaState) {
 
   // Outer soft white glow
   const glow = new Graphics();
-  glow.circle(0, 0, r * 1.7).fill({ color: 0xffffff, alpha: 0.16 });
-  glow.circle(0, 0, r * 1.3).fill({ color: 0xffffff, alpha: 0.28 });
+  glow.circle(0, 0, r * 1.7).fill({ color: 0xffffff, alpha: 0.18 });
+  glow.circle(0, 0, r * 1.3).fill({ color: 0xffffff, alpha: 0.30 });
   ball.addChild(glow);
 
   // White core
@@ -292,20 +310,34 @@ function ensureBall(st: ArenaState) {
   highlight.circle(0, 0, r * 0.55).fill({ color: 0xff5050, alpha: 0.55 });
   ball.addChild(highlight);
 
-  // Tiny pointer pip — short tick rotating around the ball at its edge
-  const pointer = new Graphics();
-  const tickLen = r * 0.9;
-  pointer
-    .moveTo(r, 0)
-    .lineTo(r + tickLen, 0)
-    .stroke({ color: 0xffffff, width: 3, cap: "round" });
-  pointer.alpha = 0; // hidden until spin starts
-  st.ballContainer.addChild(pointer);
+  // Tiny rotating tick on top of the ball — rotates with the ball's angular position
+  const tick = new Graphics();
+  const tickLen = r * 0.7;
+  tick.moveTo(0, 0).lineTo(tickLen, 0).stroke({ color: 0x111111, width: 3, cap: "round", alpha: 0.35 });
+  tick.alpha = 0;
+  ball.addChild(tick);
 
+  ball.visible = false;
   st.ballContainer.addChild(ball);
-  ball.visible = false; // hidden until late in the spin
+
+  // Username label above the ball
+  const label = new Text({
+    text: "",
+    style: {
+      fontSize: 14,
+      fontWeight: "700",
+      fill: 0xffffff,
+      align: "center",
+      stroke: { color: 0x000000, width: 4 },
+    },
+  });
+  label.anchor.set(0.5, 1);
+  label.visible = false;
+  st.ballContainer.addChild(label);
+
   st.ball = ball;
-  st.pointer = pointer;
+  st.ballHighlight = tick;
+  st.ballLabel = label;
 }
 
 async function placeAvatar(
@@ -317,7 +349,8 @@ async function placeAvatar(
   if (epoch !== st.renderEpoch) return;
   const cx = wedge.centroid.x * PIX_PER_UNIT;
   const cy = wedge.centroid.y * PIX_PER_UNIT;
-  const sizePx = Math.min(110, Math.max(56, wedge.fraction * 320));
+  // Scale avatar with wedge size — small wedges get small avatars (down to 22px).
+  const sizePx = Math.min(120, Math.max(22, Math.sqrt(wedge.fraction) * 160));
 
   const container = new Container();
   container.position.set(cx, cy);
@@ -426,4 +459,34 @@ function clearOverlay(st: ArenaState) {
     st.overlayContainer.removeChild(st.winnerOverlay);
     st.winnerOverlay = null;
   }
+}
+
+/** Project ball pixel position to the perimeter, find the wedge whose arc contains it. */
+function wedgeAt(wedges: Wedge[], step: { x: number; y: number }): Wedge | null {
+  if (wedges.length === 0) return null;
+  if (wedges.length === 1) return wedges[0]!;
+  // Convert pixel back to logical [-1,1].
+  const x = step.x / PIX_PER_UNIT;
+  const y = step.y / PIX_PER_UNIT;
+  // Project ray from origin through (x,y) to the square edge.
+  const ax = Math.abs(x);
+  const ay = Math.abs(y);
+  if (ax < 1e-6 && ay < 1e-6) return wedges[0]!;
+  const k = ARENA.HALF_SIDE / Math.max(ax, ay);
+  const px = x * k;
+  const py = y * k;
+  const HALF = ARENA.HALF_SIDE;
+  const SIDE = HALF * 2;
+  let arc: number;
+  const eps = 1e-4;
+  if (Math.abs(py + HALF) < eps) arc = px + HALF;
+  else if (Math.abs(px - HALF) < eps) arc = SIDE + (py + HALF);
+  else if (Math.abs(py - HALF) < eps) arc = SIDE * 2 + (HALF - px);
+  else if (Math.abs(px + HALF) < eps) arc = SIDE * 3 + (HALF - py);
+  else return null;
+  arc = ((arc % PERIMETER_LEN) + PERIMETER_LEN) % PERIMETER_LEN;
+  for (const w of wedges) {
+    if (arc >= w.startArc - 1e-4 && arc < w.endArc + 1e-4) return w;
+  }
+  return wedges[wedges.length - 1]!;
 }
