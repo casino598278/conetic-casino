@@ -111,6 +111,8 @@ export function buildWedges(players: PlayerEntry[], potNano: bigint): Wedge[] {
 
 /** Point inside the wedge for placing the avatar — bisector ray, pulled inward. */
 function wedgeAvatarPoint(startArc: number, endArc: number, fraction: number): Point {
+  // Single full-perimeter wedge (one player owns 100%) → place at arena centre.
+  if (fraction >= 0.999) return { x: 0, y: 0 };
   const midArc = (startArc + endArc) / 2;
   const perim = arcToPoint(midArc);
   const dist = Math.hypot(perim.x, perim.y) || 1;
