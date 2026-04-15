@@ -92,8 +92,10 @@ export function buildWedges(players: PlayerEntry[], potNano: bigint): Wedge[] {
     const fraction = Number((cum * SCALE) / potNano) / Number(SCALE);
     const endArc = i === sorted.length - 1 ? PERIMETER : fraction * PERIMETER;
     const polygon = wedgePolygon(prevArc, endArc);
-    const centroid = wedgeCentroid(polygon);
     const stakeFrac = Number(BigInt(p.stakeNano) * SCALE / potNano) / Number(SCALE);
+    // Place avatar along the bisector ray from origin to perimeter midpoint,
+    // pulled back from the perimeter so it sits comfortably INSIDE the wedge.
+    const centroid = wedgeAvatarPoint(prevArc, endArc, stakeFrac);
     wedges.push({
       userId: p.userId,
       startArc: prevArc,
@@ -105,6 +107,19 @@ export function buildWedges(players: PlayerEntry[], potNano: bigint): Wedge[] {
     prevArc = endArc;
   }
   return wedges;
+}
+
+/** Point inside the wedge for placing the avatar — bisector ray, pulled inward. */
+function wedgeAvatarPoint(startArc: number, endArc: number, fraction: number): Point {
+  const midArc = (startArc + endArc) / 2;
+  const perim = arcToPoint(midArc);
+  const dist = Math.hypot(perim.x, perim.y) || 1;
+  // pullBack: how far back from the perimeter to place the avatar.
+  // Small wedges (narrow tip) get pulled in MORE so the avatar isn't on a thin sliver.
+  // Big wedges (wide) get pulled in LESS — avatar sits closer to the visual centre of mass.
+  const pullBack = 0.7 - Math.min(0.3, fraction * 0.45);
+  const r = dist * (1 - pullBack);
+  return { x: (perim.x / dist) * r, y: (perim.y / dist) * r };
 }
 
 /** Polygon = [center, perim(start), corners crossed..., perim(end)] */

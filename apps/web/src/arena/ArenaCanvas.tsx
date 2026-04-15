@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Application, Container, Graphics, Sprite, Text, Texture, Assets } from "pixi.js";
+import { Application, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import {
   ARENA,
   buildWedges,
@@ -345,8 +345,11 @@ async function placeAvatar(
   if (player.photoUrl) {
     try {
       const proxied = `/api/avatar?url=${encodeURIComponent(player.photoUrl)}`;
-      const tex = (await Assets.load(proxied)) as Texture;
+      // Bypass Pixi Assets.load (it doesn't sniff query-string URLs reliably).
+      // Load via Image → Texture so the mime is determined by the response, not the URL.
+      const img = await loadImageBitmap(proxied);
       if (epoch !== st.renderEpoch) return;
+      const tex = Texture.from(img);
       const sprite = new Sprite(tex);
       sprite.anchor.set(0.5);
       sprite.width = sizePx;
@@ -357,10 +360,20 @@ async function placeAvatar(
       sprite.mask = mask;
       container.addChild(sprite);
       text.visible = false;
-    } catch {
-      /* initials fallback already shown */
+    } catch (err) {
+      console.warn("[arena] avatar load failed for", player.photoUrl, err);
     }
   }
+}
+
+function loadImageBitmap(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = (e) => reject(e);
+    img.src = src;
+  });
 }
 
 function showWinnerReveal(st: ArenaState, winner: Wedge, _username: string, _photoUrl: string | null) {
