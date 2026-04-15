@@ -93,9 +93,8 @@ export function buildWedges(players: PlayerEntry[], potNano: bigint): Wedge[] {
     const endArc = i === sorted.length - 1 ? PERIMETER : fraction * PERIMETER;
     const polygon = wedgePolygon(prevArc, endArc);
     const stakeFrac = Number(BigInt(p.stakeNano) * SCALE / potNano) / Number(SCALE);
-    // Place avatar along the bisector ray from origin to perimeter midpoint,
-    // pulled back from the perimeter so it sits comfortably INSIDE the wedge.
-    const centroid = wedgeAvatarPoint(prevArc, endArc, stakeFrac);
+    // Place avatar at the wedge's true centroid (visual centre of mass).
+    const centroid = wedgeAvatarPoint(polygon, prevArc, endArc, stakeFrac);
     wedges.push({
       userId: p.userId,
       startArc: prevArc,
@@ -109,19 +108,34 @@ export function buildWedges(players: PlayerEntry[], potNano: bigint): Wedge[] {
   return wedges;
 }
 
-/** Point inside the wedge for placing the avatar — bisector ray, pulled inward. */
-function wedgeAvatarPoint(startArc: number, endArc: number, fraction: number): Point {
-  // Single full-perimeter wedge (one player owns 100%) → place at arena centre.
+/**
+ * Visual centre of the wedge for avatar placement.
+ *
+ * Strategy: use the polygon's geometric centroid (true centre of mass), but
+ * blend slightly toward the perimeter midpoint — that keeps avatars away from
+ * the arena origin where all wedges meet at a point, which would cause them
+ * to crowd each other.
+ */
+function wedgeAvatarPoint(
+  polygon: Point[],
+  startArc: number,
+  endArc: number,
+  fraction: number,
+): Point {
+  // Single full wedge (one player owns 100%) → arena centre.
   if (fraction >= 0.999) return { x: 0, y: 0 };
+
+  const c = wedgeCentroid(polygon);
   const midArc = (startArc + endArc) / 2;
   const perim = arcToPoint(midArc);
-  const dist = Math.hypot(perim.x, perim.y) || 1;
-  // pullBack: how far back from the perimeter to place the avatar.
-  // Small wedges (narrow tip) get pulled in MORE so the avatar isn't on a thin sliver.
-  // Big wedges (wide) get pulled in LESS — avatar sits closer to the visual centre of mass.
-  const pullBack = 0.7 - Math.min(0.3, fraction * 0.45);
-  const r = dist * (1 - pullBack);
-  return { x: (perim.x / dist) * r, y: (perim.y / dist) * r };
+  // Blend the centroid toward the perimeter midpoint by a small factor.
+  // Tiny wedges blend MORE (their centroid is near the origin, push outward).
+  // Big wedges blend LESS (their centroid is already a great visual centre).
+  const blend = 0.25 + (1 - Math.min(1, fraction * 1.4)) * 0.25;
+  return {
+    x: c.x * (1 - blend) + perim.x * blend,
+    y: c.y * (1 - blend) + perim.y * blend,
+  };
 }
 
 /** Polygon = [center, perim(start), corners crossed..., perim(end)] */
