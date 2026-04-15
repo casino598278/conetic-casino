@@ -128,9 +128,12 @@ export function buildWedges(players: PlayerEntry[], potNano: bigint): Wedge[] {
       { x: c.cx + c.signX * s,   y: c.cy },
       { x: c.cx,                 y: c.cy + c.signY * s },
     ];
+    // Place avatar at the triangle's INCENTER (centre of inscribed circle).
+    // For a right isoceles triangle with legs s: incenter offset = s * (1 - 1/sqrt(2)).
+    const inOff = s * (1 - 1 / Math.SQRT2);
     const centroid: Point = {
-      x: c.cx + c.signX * s * 0.33,
-      y: c.cy + c.signY * s * 0.33,
+      x: c.cx + c.signX * inOff,
+      y: c.cy + c.signY * inOff,
     };
     // Corner wedge owns arc length f*PERIMETER starting from corner.
     const startArc = c.arcStart;

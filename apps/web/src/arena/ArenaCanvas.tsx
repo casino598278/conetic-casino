@@ -397,14 +397,17 @@ async function placeAvatar(
   const cy = wedge.centroid.y * PIX_PER_UNIT;
   // Size strategy:
   //   - dominant (corner === -1): big centred avatar, scaled by their share
-  //   - corner triangles: small avatar that fits inside the triangle
+  //   - corner triangles: avatar fits inside the inscribed circle of the right triangle
   let sizePx: number;
   if (wedge.corner === -1) {
     sizePx = Math.min(180, Math.max(90, Math.sqrt(wedge.fraction) * 210));
   } else {
-    // Triangle side length in pixels = sqrt(8*f)*HALF*PIX; max avatar ≈ 0.5× that.
+    // Triangle legs s = sqrt(8*f) * HALF (in logical units) → pixels.
     const triSidePx = Math.sqrt(8 * wedge.fraction) * ARENA.HALF_SIDE * PIX_PER_UNIT;
-    sizePx = Math.min(70, Math.max(16, triSidePx * 0.5));
+    // Inscribed-circle diameter = 2 * s * (1 - 1/sqrt(2)) ≈ 0.586 * s
+    // Use 80% of the inscribed diameter for safe margin from triangle edges.
+    const inscribedDiameter = triSidePx * (2 - Math.SQRT2);
+    sizePx = Math.min(70, Math.max(14, inscribedDiameter * 0.8));
   }
 
   const container = new Container();
