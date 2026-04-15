@@ -1,13 +1,14 @@
-import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles/global.css";
 import { initTelegram } from "./telegram/initWebApp";
+import { ErrorBoundary } from "./ui/ErrorBoundary";
 
 initTelegram();
 
+// StrictMode disabled in production — its double-mount confuses PixiJS init.
 createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
+  <ErrorBoundary>
     <App />
-  </React.StrictMode>,
+  </ErrorBoundary>,
 );

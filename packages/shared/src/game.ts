@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const RoundPhase = z.enum(["IDLE", "COUNTDOWN", "LIVE", "RESOLVED"]);
+export const RoundPhase = z.enum(["WAITING", "COUNTDOWN", "LIVE", "RESOLVED"]);
 export type RoundPhase = z.infer<typeof RoundPhase>;
 
 export const PlayerEntry = z.object({

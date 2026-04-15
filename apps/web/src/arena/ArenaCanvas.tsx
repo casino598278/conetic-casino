@@ -45,7 +45,7 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
       .init({
         width: PIX_PER_UNIT * 2,
         height: PIX_PER_UNIT * 2,
-        background: 0x14213d,
+        background: 0x161616,
         antialias: true,
         resolution: window.devicePixelRatio || 1,
         autoDensity: true,
@@ -95,35 +95,40 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
   useEffect(() => {
     const st = stateRef.current;
     if (!st || !snapshot) return;
-    const players = snapshot.players;
-    const potNano = BigInt(snapshot.potNano);
+    try {
+      const players = snapshot.players;
+      const potNano = BigInt(snapshot.potNano);
 
-    if (players.length === 0 || potNano === 0n) {
+      if (players.length === 0 || potNano === 0n) {
+        st.wedgeContainer.removeChildren();
+        st.wedges = [];
+        st.ballGraphic.visible = false;
+        clearOverlay(st);
+        st.wedgeContainer.scale.set(1);
+        st.wedgeContainer.position.set(PIX_PER_UNIT, PIX_PER_UNIT);
+        return;
+      }
+
+      const wedges = buildWedges(players, potNano);
+      st.wedges = wedges;
       st.wedgeContainer.removeChildren();
-      st.wedges = [];
-      st.ballGraphic.visible = false;
-      clearOverlay(st);
       st.wedgeContainer.scale.set(1);
       st.wedgeContainer.position.set(PIX_PER_UNIT, PIX_PER_UNIT);
-      return;
-    }
 
-    const wedges = buildWedges(players, potNano);
-    st.wedges = wedges;
-    st.wedgeContainer.removeChildren();
-    st.wedgeContainer.scale.set(1);
-    st.wedgeContainer.position.set(PIX_PER_UNIT, PIX_PER_UNIT);
+      for (const w of wedges) {
+        const player = players.find((p) => p.userId === w.userId);
+        if (!player) continue;
+        const color = colorForUser(w.userId);
+        const g = new Graphics();
+        g.poly(w.polygon.map((pt) => ({ x: pt.x * PIX_PER_UNIT, y: pt.y * PIX_PER_UNIT })));
+        g.fill({ color, alpha: 0.9 });
+        g.stroke({ color: fadeColor(color, 1.2), width: 1, alpha: 0.6 });
+        st.wedgeContainer.addChild(g);
 
-    for (const w of wedges) {
-      const player = players.find((p) => p.userId === w.userId)!;
-      const color = colorForUser(w.userId);
-      const g = new Graphics();
-      g.poly(w.polygon.map((pt) => ({ x: pt.x * PIX_PER_UNIT, y: pt.y * PIX_PER_UNIT })));
-      g.fill({ color, alpha: 0.9 });
-      g.stroke({ color: fadeColor(color, 1.2), width: 1, alpha: 0.6 });
-      st.wedgeContainer.addChild(g);
-
-      placeAvatar(st, w, player, color).catch(() => {});
+        placeAvatar(st, w, player, color).catch((e) => console.warn("[arena] avatar failed", e));
+      }
+    } catch (err) {
+      console.error("[arena] wedge render failed", err);
     }
   }, [snapshot]);
 
@@ -131,11 +136,17 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
   useEffect(() => {
     const st = stateRef.current;
     if (!st || !trajectorySeed || liveStartedAt == null) return;
+    let traj;
+    try {
+      traj = simulateTrajectory(trajectorySeed);
+    } catch (err) {
+      console.error("[arena] simulate failed", err);
+      return;
+    }
     clearOverlay(st);
     st.wedgeContainer.scale.set(1);
     st.wedgeContainer.position.set(PIX_PER_UNIT, PIX_PER_UNIT);
 
-    const traj = simulateTrajectory(trajectorySeed);
     st.ballGraphic.visible = true;
     if (st.rafId) cancelAnimationFrame(st.rafId);
     const startWall = performance.now();

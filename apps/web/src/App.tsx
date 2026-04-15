@@ -52,6 +52,31 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
 
+  // Version watch — hard-reload if backend deployed a new build.
+  useEffect(() => {
+    let initial: string | null = null;
+    const check = async () => {
+      try {
+        const res = await fetch("/api/version", { cache: "no-store" });
+        if (!res.ok) return;
+        const { buildId } = await res.json();
+        if (initial == null) {
+          initial = buildId;
+          return;
+        }
+        if (buildId !== initial) {
+          console.log("[version] new build detected, reloading");
+          window.location.reload();
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    check();
+    const t = setInterval(check, 30_000);
+    return () => clearInterval(t);
+  }, []);
+
   // Auth + initial /me + WS subscribe.
   useEffect(() => {
     (async () => {
@@ -79,9 +104,9 @@ export default function App() {
         );
         sock.on(SERVER_EVENTS.RoundResult, async (r: RoundResult) => {
           setResult(r);
-          // Refresh balance after each round (simpler than diffing ledger client-side).
-          const me2 = await api<{ balanceNano: string }>("/me");
-          setBalance(BigInt(me2.balanceNano));
+        });
+        sock.on("balance:update", (b: { balanceNano: string }) => {
+          setBalance(BigInt(b.balanceNano));
         });
       } catch (err: any) {
         setAuthError(err.message ?? "auth failed");
@@ -91,9 +116,10 @@ export default function App() {
 
   const countdown = useCountdown(snapshot?.countdownEndsAt ?? null);
   const isLive = !!liveSeed && snapshot?.phase === "LIVE";
-  const phase = snapshot?.phase ?? "IDLE";
-  const canBet = phase === "COUNTDOWN";
+  const phase = snapshot?.phase ?? "WAITING";
+  const canBet = phase === "WAITING" || phase === "COUNTDOWN";
   const pot = snapshot?.potNano ?? "0";
+  const playersJoined = snapshot?.players.length ?? 0;
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -116,18 +142,7 @@ export default function App() {
       <header className="header">
         <h1>🎰 Conetic Casino</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {!wsConnected && (
-            <span
-              title="Reconnecting…"
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: "var(--danger)",
-                animation: "toast-in 1s ease-in-out infinite alternate",
-              }}
-            />
-          )}
+          {!wsConnected && <span className="ws-disconnected" title="Reconnecting…" />}
           <button className="balance-pill" onClick={() => setShowWallet(true)}>
             💎 {fmtTon(balance.toString())} TON
           </button>
@@ -138,13 +153,17 @@ export default function App() {
         <div>Pot <strong>{fmtTon(pot)}</strong> TON</div>
         <div>
           {isLive ? (
-            <span className="live">● LIVE</span>
+            <span className="live">LIVE</span>
           ) : phase === "COUNTDOWN" ? (
             <span className="countdown">Starts in {countdown}</span>
           ) : phase === "RESOLVED" ? (
             <span className="live">Winner!</span>
           ) : (
-            <span className="countdown">Waiting…</span>
+            <span className="waiting">
+              {playersJoined < 2
+                ? `Waiting for players (${playersJoined}/2)`
+                : "Starting…"}
+            </span>
           )}
         </div>
       </div>
@@ -163,14 +182,7 @@ export default function App() {
 
       <PlayersList snapshot={snapshot} />
 
-      <BetBar
-        disabled={!canBet}
-        onPlaced={async () => {
-          const me = await api<{ balanceNano: string }>("/me");
-          setBalance(BigInt(me.balanceNano));
-        }}
-        onError={(m) => showToast(m)}
-      />
+      <BetBar disabled={!canBet} onError={(m) => showToast(m)} />
 
       <div className="tabs">
         <button className="active">Arena</button>

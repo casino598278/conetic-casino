@@ -8,8 +8,8 @@ import {
   type RoundResult,
 } from "@conetic/shared";
 import { config } from "../config.js";
-import { txn } from "../db/sqlite.js";
-import { credit, debit, InsufficientBalanceError } from "../db/repo/ledger.js";
+import { db, txn } from "../db/sqlite.js";
+import { credit, debit, getBalanceNano, InsufficientBalanceError } from "../db/repo/ledger.js";
 import {
   createRound,
   findUnresolvedRounds,
@@ -40,7 +40,7 @@ export type JoinResult =
  */
 export class GameEngine extends EventEmitter {
   private currentRoundId: number | null = null;
-  private phase: "IDLE" | "COUNTDOWN" | "LIVE" | "RESOLVED" = "IDLE";
+  private phase: "WAITING" | "COUNTDOWN" | "LIVE" | "RESOLVED" = "WAITING";
   private countdownTimer: NodeJS.Timeout | null = null;
   private liveTimer: NodeJS.Timeout | null = null;
   private tickTimer: NodeJS.Timeout | null = null;
@@ -68,7 +68,7 @@ export class GameEngine extends EventEmitter {
     if (!this.currentRoundId) {
       return {
         roundId: 0,
-        phase: "IDLE",
+        phase: "WAITING",
         players: [],
         potNano: "0",
         countdownEndsAt: null,
@@ -82,25 +82,31 @@ export class GameEngine extends EventEmitter {
       phase: this.phase,
       players,
       potNano: round.pot_nano,
-      countdownEndsAt: round.countdown_ends_at,
+      // Only expose endsAt during actual COUNTDOWN — null while WAITING.
+      countdownEndsAt: this.phase === "COUNTDOWN" ? round.countdown_ends_at : null,
       serverSeedHash: round.server_seed_hash,
     };
   }
 
-  /** Place a bet during COUNTDOWN (until T - BET_LOCK_BUFFER_MS). */
+  /** Place a bet during WAITING or COUNTDOWN (locked at T - BET_LOCK_BUFFER_MS). */
   placeBet(input: {
     userId: string;
     amountNano: bigint;
     clientSeedHex: string;
   }): JoinResult {
-    if (this.phase !== "COUNTDOWN" || this.currentRoundId == null) {
+    if (this.currentRoundId == null) {
+      return { ok: false, error: "phase_closed" };
+    }
+    if (this.phase !== "WAITING" && this.phase !== "COUNTDOWN") {
       return { ok: false, error: "phase_closed" };
     }
     const round = getRound(this.currentRoundId);
-    if (!round || round.countdown_ends_at == null) {
-      return { ok: false, error: "phase_closed" };
-    }
-    if (Date.now() > round.countdown_ends_at - BET_LOCK_BUFFER_MS) {
+    if (!round) return { ok: false, error: "phase_closed" };
+    if (
+      this.phase === "COUNTDOWN" &&
+      round.countdown_ends_at != null &&
+      Date.now() > round.countdown_ends_at - BET_LOCK_BUFFER_MS
+    ) {
       return { ok: false, error: "phase_closed" };
     }
 
@@ -136,6 +142,17 @@ export class GameEngine extends EventEmitter {
       throw err;
     }
 
+    // If we're in WAITING and this bet brings us to 2+ players, start the countdown.
+    if (this.phase === "WAITING") {
+      const bets = getBetsForRound(this.currentRoundId!);
+      if (bets.length >= 2) {
+        this.beginCountdown();
+      }
+    }
+
+    // Push updated balance to the bettor.
+    this.emit("balanceChanged", { userId: input.userId, balanceNano: getBalanceNano(input.userId) });
+
     const snapshot = this.getSnapshot();
     this.emit("playerJoined", snapshot);
     return { ok: true, snapshot };
@@ -144,20 +161,47 @@ export class GameEngine extends EventEmitter {
   // --- internals ---
 
   private scheduleNextRound() {
+    if (this.countdownTimer) {
+      clearTimeout(this.countdownTimer);
+      this.countdownTimer = null;
+    }
     const serverSeedHex = generateServerSeed();
     const serverSeedHash = sha256Hex(serverSeedHex);
-    const countdownMs = config.COUNTDOWN_SECONDS * 1000;
-    const countdownEndsAt = Date.now() + countdownMs;
-    const round = createRound({ serverSeedHex, serverSeedHash, countdownEndsAt });
+    // Created with a placeholder countdown_ends_at; only used once we hit COUNTDOWN.
+    const round = createRound({
+      serverSeedHex,
+      serverSeedHash,
+      countdownEndsAt: Date.now() + config.COUNTDOWN_SECONDS * 1000,
+    });
     this.currentRoundId = round.id;
-    this.phase = "COUNTDOWN";
+    this.phase = "WAITING";
     this.emit("roundCommit", {
       roundId: round.id,
       serverSeedHash,
+      countdownEndsAt: 0, // 0 means waiting for players
+    });
+    this.emit("snapshot", this.getSnapshot());
+  }
+
+  /** Switch the current WAITING round into COUNTDOWN; called when 2nd player joins. */
+  private beginCountdown() {
+    if (this.phase !== "WAITING" || this.currentRoundId == null) return;
+    const countdownMs = config.COUNTDOWN_SECONDS * 1000;
+    const countdownEndsAt = Date.now() + countdownMs;
+    // Update round row so getSnapshot exposes the deadline.
+    const r = getRound(this.currentRoundId)!;
+    db.prepare("UPDATE rounds SET countdown_ends_at = ? WHERE id = ?").run(
+      countdownEndsAt,
+      r.id,
+    );
+    this.phase = "COUNTDOWN";
+    console.log(`[engine] round ${r.id} countdown started (${config.COUNTDOWN_SECONDS}s)`);
+    this.emit("roundCommit", {
+      roundId: r.id,
+      serverSeedHash: r.server_seed_hash,
       countdownEndsAt,
     });
     this.emit("snapshot", this.getSnapshot());
-
     this.countdownTimer = setTimeout(() => this.startLive(), countdownMs);
   }
 
@@ -166,14 +210,13 @@ export class GameEngine extends EventEmitter {
     const round = getRound(this.currentRoundId)!;
     const bets = getBetsForRound(round.id);
 
+    // Defensive: if a player left mid-countdown bringing us below 2, refund + reset.
     if (bets.length < 2) {
-      // Not enough players. Refund any single-player bet, reset.
       this.refundRound(round);
       this.currentRoundId = null;
-      this.phase = "IDLE";
+      this.phase = "WAITING";
       this.emit("snapshot", this.getSnapshot());
-      // Brief pause then start a fresh round.
-      setTimeout(() => this.scheduleNextRound(), 1500);
+      setTimeout(() => this.scheduleNextRound(), 1000);
       return;
     }
 
@@ -250,6 +293,11 @@ export class GameEngine extends EventEmitter {
       });
     });
 
+    // Push updated balances to all players in this round.
+    for (const b of bets) {
+      this.emit("balanceChanged", { userId: b.user_id, balanceNano: getBalanceNano(b.user_id) });
+    }
+
     const resolved = getRound(roundId)!;
     const resultEvent: RoundResult = {
       roundId,
@@ -272,7 +320,7 @@ export class GameEngine extends EventEmitter {
   private afterRound() {
     setTimeout(() => {
       this.currentRoundId = null;
-      this.phase = "IDLE";
+      this.phase = "WAITING";
       this.scheduleNextRound();
     }, 4000);
   }

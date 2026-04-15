@@ -52,11 +52,15 @@ async function main() {
     timeWindow: "1 minute",
   });
 
+  // Build version: changes every restart, so the frontend can detect new deploys.
+  const BUILD_ID = process.env.RENDER_GIT_COMMIT?.slice(0, 8) ?? Date.now().toString();
+
   app.get("/health", async () => ({ ok: true, env: config.NODE_ENV, ton: config.TON_NETWORK }));
 
   // API routes are namespaced under /api so the static frontend can own /.
   await app.register(
     async (api) => {
+      api.get("/version", async () => ({ buildId: BUILD_ID }));
       await registerAuthRoutes(api);
       await registerMeRoutes(api);
       await registerBetRoutes(api);

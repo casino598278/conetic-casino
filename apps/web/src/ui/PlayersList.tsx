@@ -23,7 +23,10 @@ export function PlayersList({ snapshot }: Props) {
           <h2>Players · 0</h2>
           <span className="meta">Game #{snapshot?.roundId ?? "—"}</span>
         </div>
-        <div className="empty">Be the first to stake — invite a friend.</div>
+        <div className="empty">
+          Stake to join the round.<br />
+          Round starts when 2+ players are in.
+        </div>
       </div>
     );
   }

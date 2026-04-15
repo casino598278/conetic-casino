@@ -20,11 +20,10 @@ function randomClientSeed(): string {
 
 interface Props {
   disabled?: boolean;
-  onPlaced?: () => void;
   onError?: (msg: string) => void;
 }
 
-export function BetBar({ disabled, onPlaced, onError }: Props) {
+export function BetBar({ disabled, onError }: Props) {
   const [amount, setAmount] = useState("0.1");
   const [busy, setBusy] = useState(false);
   const balance = useWalletStore((s) => s.balanceNano);
@@ -52,7 +51,6 @@ export function BetBar({ disabled, onPlaced, onError }: Props) {
         }),
       });
       notify("success");
-      onPlaced?.();
     } catch (err: any) {
       const msg = err?.message ?? "failed";
       notify("error");

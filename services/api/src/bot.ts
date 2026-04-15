@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard } from "grammy";
 import { config } from "./config.js";
 import { upsertTelegramUser } from "./db/repo/users.js";
 import { credit, getBalanceNano } from "./db/repo/ledger.js";
+import { pushBalance } from "./ws/gateway.js";
 
 let started = false;
 
@@ -81,6 +82,7 @@ export function startBot() {
       refId: `play-money:${Date.now()}`,
     });
     const newBal = getBalanceNano(user.id);
+    pushBalance(user.id, newBal);
     await ctx.reply(
       `🎁 Credited ${fmtTon(PLAY_MONEY_AMOUNT_NANO)} TON test balance.\n` +
         `New balance: ${fmtTon(newBal)} TON\n\n` +
