@@ -1,0 +1,53 @@
+services:
+  - type: web
+    name: conetic-casino
+    runtime: node
+    plan: starter
+    region: oregon
+    branch: main
+    buildCommand: corepack enable && pnpm install --frozen-lockfile=false && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: casino-data
+      mountPath: /opt/render/project/src/services/api/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: 10000
+      - key: TON_NETWORK
+        value: testnet
+      - key: TON_ENDPOINT
+        value: https://testnet.toncenter.com/api/v2/jsonRPC
+      - key: RAKE_BPS
+        value: "50"
+      - key: COUNTDOWN_SECONDS
+        value: "30"
+      - key: MIN_BET_TON
+        value: "0.1"
+      - key: MAX_BET_TON
+        value: "100"
+      - key: MAX_DAILY_WITHDRAW_TON
+        value: "500"
+      - key: WITHDRAW_COOLDOWN_SECONDS
+        value: "60"
+      - key: DB_PATH
+        value: /opt/render/project/src/services/api/data/casino.db
+      # Filled in via the Render dashboard (sync: false → not in repo):
+      - key: BOT_TOKEN
+        sync: false
+      - key: BOT_USERNAME
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: HOT_WALLET_MNEMONIC
+        sync: false
+      - key: TON_API_KEY
+        sync: false
+      - key: PUBLIC_WEB_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
