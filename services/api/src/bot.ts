@@ -99,7 +99,8 @@ export function startBot() {
 
     bot.api
       .setMyCommands([
-        { command: "play", description: "Open the casino" },
+        { command: "start", description: "Welcome + open the casino" },
+        { command: "play", description: "Open the arena" },
         { command: "deposit", description: "Get 1000 TON test balance (testnet)" },
         { command: "balance", description: "Check your balance" },
       ])

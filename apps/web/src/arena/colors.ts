@@ -1,7 +1,17 @@
-// Distinct, high-contrast wedge colors. Cycles if more players than colors.
+// Cool steel-blue / accent palette — distinct but harmonious for a casino theme.
 const PALETTE = [
-  0x4cc3ff, 0xc24cff, 0xff6b6b, 0xffc94c, 0x6ee36e, 0xff8a4c, 0x4cffd2, 0xff4cb1,
-  0x9d4cff, 0x4cffa8, 0xffe14c, 0x4c8aff,
+  0x6db3ff, // sky
+  0x9aa9c8, // steel
+  0xf5c863, // gold
+  0x6ee3a3, // mint
+  0xff6b78, // coral
+  0xb39dff, // lavender
+  0x4ad6e8, // cyan
+  0xffa463, // amber
+  0xa3e36e, // lime
+  0xff8fc7, // pink
+  0x7a8cff, // periwinkle
+  0xe6c891, // sand
 ];
 
 export function colorForUser(userId: string): number {

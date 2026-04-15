@@ -45,7 +45,7 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
       .init({
         width: PIX_PER_UNIT * 2,
         height: PIX_PER_UNIT * 2,
-        background: 0x141826,
+        background: 0x14213d,
         antialias: true,
         resolution: window.devicePixelRatio || 1,
         autoDensity: true,
