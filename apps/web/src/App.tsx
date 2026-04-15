@@ -3,6 +3,7 @@ import { ArenaCanvas } from "./arena/ArenaCanvas";
 import { BetBar } from "./ui/BetBar";
 import { PlayersList } from "./ui/PlayersList";
 import { WalletSheet } from "./ui/WalletSheet";
+import { WinCard } from "./ui/WinCard";
 import { useLobbyStore } from "./state/lobbyStore";
 import { useWalletStore } from "./state/walletStore";
 import { api, login } from "./net/api";
@@ -49,6 +50,7 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
+  const [winCardVisible, setWinCardVisible] = useState(false);
 
   // Version watch — hard-reload if backend deployed a new build.
   useEffect(() => {
@@ -124,6 +126,16 @@ export default function App() {
     setTimeout(() => setToast(null), 2500);
   };
 
+  // Show the win card after the spin animation completes (~9.3s after RoundLive).
+  useEffect(() => {
+    if (!lastResult) {
+      setWinCardVisible(false);
+      return;
+    }
+    const t = setTimeout(() => setWinCardVisible(true), 9300);
+    return () => clearTimeout(t);
+  }, [lastResult]);
+
   if (authError) {
     return (
       <div className="app">
@@ -188,6 +200,20 @@ export default function App() {
       </div>
 
       {showWallet && <WalletSheet onClose={() => setShowWallet(false)} />}
+
+      {winCardVisible && lastResult && snapshot && (() => {
+        const winnerPlayer = snapshot.players.find((p) => p.userId === lastResult.winnerUserId);
+        const username = winnerPlayer?.username ? `@${winnerPlayer.username}` : winnerPlayer?.firstName ?? "Winner";
+        return (
+          <WinCard
+            username={username}
+            payoutNano={lastResult.winnerPayoutNano}
+            photoUrl={winnerPlayer?.photoUrl ?? null}
+            isMe={lastResult.winnerUserId === user?.id}
+            onDone={() => setWinCardVisible(false)}
+          />
+        );
+      })()}
 
       {toast && <div className="toast">{toast}</div>}
     </div>

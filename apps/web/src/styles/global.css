@@ -491,6 +491,66 @@ input, textarea { font-family: inherit; }
   line-height: 1.6;
 }
 
+/* Win card */
+.win-card {
+  position: fixed;
+  bottom: calc(20px + var(--safe-bottom));
+  left: 50%;
+  transform: translate(-50%, 120px);
+  background: linear-gradient(180deg, var(--s2), var(--s1));
+  border: 1px solid var(--b2);
+  border-radius: 18px;
+  padding: 18px 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 150;
+  min-width: 220px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--blue-glow);
+  transition: transform .35s cubic-bezier(.2,1.2,.3,1), opacity .25s;
+  opacity: 0;
+}
+.win-card.in {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+.win-card-head {
+  font-size: 13px;
+  color: var(--t2);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.win-card-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--s3);
+  border: 2px solid var(--blue);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 18px var(--blue-glow);
+}
+.win-card-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.win-card-avatar span {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--blue);
+}
+.win-card-amount {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+}
+
 /* Connection status dot */
 .ws-disconnected {
   width: 8px;
