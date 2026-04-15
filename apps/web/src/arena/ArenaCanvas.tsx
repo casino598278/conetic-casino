@@ -33,6 +33,8 @@ interface ArenaState {
   rafZoom: number | null;
   /** Increments on every snapshot render — late-arriving avatar loads check this and bail. */
   renderEpoch: number;
+  /** Last roundId we rendered — to know if we're switching rounds. */
+  lastRoundId: number | null;
 }
 
 export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, currentUserId }: Props) {
@@ -86,6 +88,7 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
           rafId: null,
           rafZoom: null,
           renderEpoch: 0,
+          lastRoundId: null,
         };
         appRef.current = app;
       });
@@ -108,17 +111,26 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
 
       st.renderEpoch++;
       const myEpoch = st.renderEpoch;
+      const newRound = snapshot.roundId !== st.lastRoundId;
+      st.lastRoundId = snapshot.roundId;
+
+      // Only fully reset on a NEW round (not on every tick during the same round).
+      if (newRound) {
+        if (st.rafZoom) { cancelAnimationFrame(st.rafZoom); st.rafZoom = null; }
+        if (st.rafId) { cancelAnimationFrame(st.rafId); st.rafId = null; }
+        clearOverlay(st);
+        for (const c of [st.wedgeContainer, st.avatarContainer]) {
+          c.scale.set(1);
+          c.position.set(PIX_PER_UNIT, PIX_PER_UNIT);
+        }
+        st.ballGraphic.visible = false;
+      }
 
       if (players.length === 0 || potNano === 0n) {
         st.wedgeContainer.removeChildren();
         st.avatarContainer.removeChildren();
         st.wedges = [];
         st.ballGraphic.visible = false;
-        clearOverlay(st);
-        st.wedgeContainer.scale.set(1);
-        st.wedgeContainer.position.set(PIX_PER_UNIT, PIX_PER_UNIT);
-        st.avatarContainer.scale.set(1);
-        st.avatarContainer.position.set(PIX_PER_UNIT, PIX_PER_UNIT);
         return;
       }
 
@@ -126,18 +138,13 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
       st.wedges = wedges;
       st.wedgeContainer.removeChildren();
       st.avatarContainer.removeChildren();
-      st.wedgeContainer.scale.set(1);
-      st.wedgeContainer.position.set(PIX_PER_UNIT, PIX_PER_UNIT);
-      st.avatarContainer.scale.set(1);
-      st.avatarContainer.position.set(PIX_PER_UNIT, PIX_PER_UNIT);
 
-      // Pass 1: draw all wedge fills.
+      // Pass 1: draw all wedge fills (no border).
       for (const w of wedges) {
         const color = colorForUser(w.userId);
         const g = new Graphics();
         g.poly(w.polygon.map((pt) => ({ x: pt.x * PIX_PER_UNIT, y: pt.y * PIX_PER_UNIT })));
-        g.fill({ color, alpha: 0.92 });
-        g.stroke({ color: 0x0d0d0d, width: 2, alpha: 1 });
+        g.fill({ color, alpha: 0.95 });
         st.wedgeContainer.addChild(g);
       }
       // Pass 2: place avatars in their own top container so they're never covered.
@@ -205,7 +212,16 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
       st.ballGraphic.visible = false;
       showWinnerOverlay(st, winner, username);
     }, 400);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      // Tear down overlay + zoom when result changes (new round, navigate away, etc.)
+      if (st.rafZoom) { cancelAnimationFrame(st.rafZoom); st.rafZoom = null; }
+      clearOverlay(st);
+      for (const c of [st.wedgeContainer, st.avatarContainer]) {
+        c.scale.set(1);
+        c.position.set(PIX_PER_UNIT, PIX_PER_UNIT);
+      }
+    };
   }, [result, snapshot, currentUserId]);
 
   return <div ref={hostRef} style={{ width: "100%", height: "100%" }} />;
@@ -231,7 +247,7 @@ async function placeAvatar(
   // Background circle (initials fallback) — always visible, ensures avatar never looks "missing"
   const bg = new Graphics();
   bg.circle(0, 0, sizePx / 2).fill(0xffffff);
-  bg.stroke({ color: 0x0d0d0d, width: 2, alpha: 1 });
+  bg.stroke({ color: 0xffffff, width: 2, alpha: 0.9 });
   container.addChild(bg);
 
   const initials = (player.firstName ?? "?").slice(0, 2).toUpperCase();
@@ -252,7 +268,9 @@ async function placeAvatar(
 
   if (player.photoUrl) {
     try {
-      const tex = (await Assets.load(player.photoUrl)) as Texture;
+      // Telegram avatar URLs are CORS-locked. Route through our proxy.
+      const proxied = `/api/avatar?url=${encodeURIComponent(player.photoUrl)}`;
+      const tex = (await Assets.load(proxied)) as Texture;
       if (epoch !== st.renderEpoch) return; // discarded by next render
       const sprite = new Sprite(tex);
       sprite.anchor.set(0.5);

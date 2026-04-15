@@ -21,5 +21,5 @@ export const useLobbyStore = create<LobbyState>((set) => ({
   setLive: (seed, startedAt) =>
     set({ liveTrajectorySeed: seed, liveStartedAt: startedAt, lastResult: null }),
   setResult: (r) => set({ lastResult: r }),
-  clearLive: () => set({ liveTrajectorySeed: null, liveStartedAt: null }),
+  clearLive: () => set({ liveTrajectorySeed: null, liveStartedAt: null, lastResult: null }),
 }));

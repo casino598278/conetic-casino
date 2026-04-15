@@ -47,7 +47,9 @@ export function PlayersList({ snapshot }: Props) {
             <div
               className="avatar"
               style={{
-                background: p.photoUrl ? `url(${p.photoUrl})` : `#${color.toString(16).padStart(6, "0")}`,
+                background: p.photoUrl
+                  ? `url(/api/avatar?url=${encodeURIComponent(p.photoUrl)})`
+                  : `#${color.toString(16).padStart(6, "0")}`,
                 backgroundSize: "cover",
               }}
             >

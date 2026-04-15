@@ -13,6 +13,7 @@ import { registerMeRoutes } from "./http/routes.me.js";
 import { registerBetRoutes } from "./http/routes.bet.js";
 import { registerWalletRoutes } from "./http/routes.wallet.js";
 import { registerRoundRoutes } from "./http/routes.rounds.js";
+import { registerAvatarRoutes } from "./http/routes.avatar.js";
 import { engine } from "./game/engine.js";
 import { attachGateway } from "./ws/gateway.js";
 import { startTonWatcher, stopTonWatcher } from "./wallet/ton/watcher.js";
@@ -66,6 +67,7 @@ async function main() {
       await registerBetRoutes(api);
       await registerWalletRoutes(api);
       await registerRoundRoutes(api);
+      await registerAvatarRoutes(api);
     },
     { prefix: "/api" },
   );
