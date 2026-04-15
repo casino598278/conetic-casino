@@ -339,6 +339,17 @@ input, textarea { font-family: inherit; }
   opacity: .35;
   cursor: not-allowed;
 }
+.bet-preset.bet-edit {
+  flex: 0 0 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t2);
+}
+.bet-preset.bet-edit:hover:not(:disabled) {
+  color: var(--blue-l);
+  border-color: var(--blue);
+}
 
 .bet-allin {
   flex: 1.4;

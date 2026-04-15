@@ -3,7 +3,7 @@ import { api } from "../net/api";
 import { haptic, notify } from "../telegram/initWebApp";
 import { useWalletStore } from "../state/walletStore";
 
-const PRESETS = [0.1, 1, 5, 10, 100];
+const PRESETS = [1, 5, 10, 100];
 const NANO = 1_000_000_000n;
 
 function tonToNano(ton: number): bigint {
@@ -32,6 +32,8 @@ interface Props {
 
 export function BetBar({ disabled, onError }: Props) {
   const [busy, setBusy] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [customAmt, setCustomAmt] = useState("");
   const balance = useWalletStore((s) => s.balanceNano);
 
   const stake = async (amountNano: bigint) => {
@@ -69,32 +71,95 @@ export function BetBar({ disabled, onError }: Props) {
     }
   };
 
+  const submitCustom = async () => {
+    const ton = parseFloat(customAmt);
+    if (!Number.isFinite(ton) || ton <= 0) {
+      onError?.("invalid amount");
+      return;
+    }
+    await stake(tonToNano(ton));
+    setEditorOpen(false);
+    setCustomAmt("");
+  };
+
   return (
-    <div className="bet-bar">
-      {PRESETS.map((p) => {
-        const nano = tonToNano(p);
-        const tooPoor = nano > balance;
-        return (
-          <button
-            key={p}
-            className="bet-preset"
-            type="button"
-            disabled={disabled || busy || tooPoor}
-            onClick={() => stake(nano)}
-          >
-            {p < 1 ? p : Number.isInteger(p) ? p : p.toFixed(1)}
-          </button>
-        );
-      })}
-      <button
-        className="bet-allin"
-        type="button"
-        disabled={disabled || busy || balance <= 0n}
-        onClick={() => stake(balance)}
-        title={`All-in: ${fmtTon(balance)} TON`}
-      >
-        All-in
-      </button>
-    </div>
+    <>
+      <div className="bet-bar">
+        <button
+          className="bet-preset bet-edit"
+          type="button"
+          disabled={disabled || busy}
+          onClick={() => setEditorOpen(true)}
+          title="Custom amount"
+          aria-label="Custom amount"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+          </svg>
+        </button>
+        {PRESETS.map((p) => {
+          const nano = tonToNano(p);
+          const tooPoor = nano > balance;
+          return (
+            <button
+              key={p}
+              className="bet-preset"
+              type="button"
+              disabled={disabled || busy || tooPoor}
+              onClick={() => stake(nano)}
+            >
+              {p}
+            </button>
+          );
+        })}
+        <button
+          className="bet-allin"
+          type="button"
+          disabled={disabled || busy || balance <= 0n}
+          onClick={() => stake(balance)}
+          title={`All-in: ${fmtTon(balance)} TON`}
+        >
+          All-in
+        </button>
+      </div>
+
+      {editorOpen && (
+        <div className="modal-bg" onClick={() => setEditorOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Custom bet</h3>
+            <div style={{ color: "var(--t3)", fontSize: 12, marginBottom: 8 }}>
+              Balance: {fmtTon(balance)} TON
+            </div>
+            <input
+              autoFocus
+              className="bet-input"
+              style={{ width: "100%", marginBottom: 10 }}
+              type="number"
+              inputMode="decimal"
+              placeholder="Amount in TON"
+              value={customAmt}
+              onChange={(e) => setCustomAmt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitCustom();
+              }}
+              min={0}
+              step="0.1"
+            />
+            <button className="primary" type="button" onClick={submitCustom} disabled={busy}>
+              {busy ? "Placing…" : "Stake"}
+            </button>
+            <button
+              className="bet-preset"
+              type="button"
+              style={{ width: "100%", marginTop: 8 }}
+              onClick={() => setEditorOpen(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
