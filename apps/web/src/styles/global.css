@@ -130,18 +130,20 @@ input, textarea { font-family: inherit; }
   align-items: center;
   justify-content: space-between;
   padding: 8px 14px 6px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--t3);
+  font-weight: 500;
 }
 .pot-row strong {
   color: var(--text);
   font-weight: 700;
-  font-size: 16px;
-  margin: 0 6px;
+  font-size: 14px;
+  margin: 0 4px;
 }
 .pot-row .live {
   color: var(--win);
   font-weight: 700;
+  font-size: 14px;
   letter-spacing: 0.5px;
   display: inline-flex;
   align-items: center;
@@ -157,13 +159,15 @@ input, textarea { font-family: inherit; }
   animation: pulse 1.5s ease-in-out infinite;
 }
 .pot-row .countdown {
-  color: var(--blue-l);
+  color: var(--t2);
   font-weight: 700;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 .pot-row .waiting {
   color: var(--t2);
   font-weight: 600;
+  font-size: 14px;
 }
 
 /* Arena */
@@ -259,7 +263,7 @@ input, textarea { font-family: inherit; }
 }
 .player-row .info .pct {
   font-size: 12px;
-  color: var(--blue-l);
+  color: var(--t2);
   font-weight: 500;
   margin-top: 2px;
 }
@@ -616,7 +620,7 @@ input, textarea { font-family: inherit; }
 .game-pill-avatar span {
   font-size: 9px;
   font-weight: 700;
-  color: var(--blue);
+  color: var(--t2);
 }
 .game-pill-name {
   font-size: 12px;
@@ -630,7 +634,7 @@ input, textarea { font-family: inherit; }
 }
 .game-pill-amount {
   font-size: 12px;
-  color: var(--blue-l);
+  color: var(--t2);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
@@ -764,7 +768,7 @@ input, textarea { font-family: inherit; }
   font-size: 11px;
   color: var(--t3);
 }
-.history-chance span { color: var(--blue-l); font-weight: 600; }
+.history-chance span { color: var(--t2); font-weight: 600; }
 
 /* Win screen (full-screen) */
 .win-screen {

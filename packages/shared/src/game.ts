@@ -44,7 +44,7 @@ export type RoundResult = z.infer<typeof RoundResult>;
 export const ARENA = {
   HALF_SIDE: 1.0,            // logical units; client scales to pixels
   SIM_DT_MS: 1000 / 60,      // fixed timestep
-  MAX_SIM_MS: 9000,          // hard cap on a spin animation (~9s — like a roulette wheel)
+  MAX_SIM_MS: 11000,         // hard cap on the spin+shoot animation
   BALL_RADIUS: 0.06,         // visual radius of the centre ball (in logical units)
   RAKE_BPS: 50,              // 0.5%
   BPS_DENOM: 10000,

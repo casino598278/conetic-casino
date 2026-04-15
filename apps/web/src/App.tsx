@@ -139,7 +139,7 @@ export default function App() {
     const t = setTimeout(() => {
       setWinScreenVisible(true);
       setPillsRefreshKey((k) => k + 1);
-    }, 9300);
+    }, 11300);
     return () => clearTimeout(t);
   }, [lastResult]);
 
@@ -181,7 +181,7 @@ export default function App() {
       <GamePills refreshKey={pillsRefreshKey} onOpenHistory={() => setShowHistory(true)} />
 
       <div className="pot-row">
-        <div>Total <strong>{fmtTon(pot)}</strong> TON</div>
+        <div>Total <strong>{fmtTon(pot)}</strong></div>
         <div>
           {isLive ? (
             <span className="live">LIVE</span>
