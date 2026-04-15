@@ -31,7 +31,21 @@ async function main() {
       : true,
   });
 
-  await app.register(cors, { origin: config.CORS_ORIGIN, credentials: true });
+  // CORS: allow configured origin + the public URL (same-origin in prod)
+  const allowedOrigins = new Set(
+    [config.CORS_ORIGIN, config.PUBLIC_WEB_URL].filter(Boolean),
+  );
+  await app.register(cors, {
+    origin: (origin, cb) => {
+      // Same-origin requests have no Origin header.
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.has(origin)) return cb(null, true);
+      // Allow Telegram WebApp origins.
+      if (origin.endsWith(".telegram.org") || origin.endsWith(".t.me")) return cb(null, true);
+      return cb(null, false);
+    },
+    credentials: true,
+  });
   await app.register(rateLimit, {
     global: false,
     max: 60,

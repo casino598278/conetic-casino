@@ -7,7 +7,7 @@ export interface SessionPayload {
   username: string | null;
 }
 
-const TTL = "15m";
+const TTL = "7d";
 
 export function signSession(payload: SessionPayload): string {
   return jwt.sign(payload, config.JWT_SECRET, { expiresIn: TTL, algorithm: "HS256" });

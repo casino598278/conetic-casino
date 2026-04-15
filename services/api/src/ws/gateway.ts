@@ -8,7 +8,8 @@ import { verifySession } from "../auth/jwt.js";
 export function attachGateway(fastify: FastifyInstance): Server {
   const io = new Server(fastify.server, {
     path: "/socket.io",
-    cors: { origin: config.CORS_ORIGIN, credentials: true },
+    // Permissive CORS — auth is enforced via JWT on handshake (below).
+    cors: { origin: true, credentials: true },
   });
 
   io.use((socket, next) => {

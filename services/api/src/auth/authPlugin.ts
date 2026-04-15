@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { verifySession, type SessionPayload } from "./jwt.js";
 
 declare module "fastify" {
@@ -7,21 +7,18 @@ declare module "fastify" {
   }
 }
 
-export const requireAuth: FastifyPluginAsync = async (fastify: FastifyInstance) => {
-  // Fastify v5: only decorate if not already decorated (avoid "already decorated" errors
-  // when the plugin is registered in multiple scoped contexts).
-  if (!fastify.hasRequestDecorator("user")) {
-    fastify.decorateRequest("user", undefined);
+/**
+ * Attach as a per-route `preHandler`. Verifies Bearer JWT and sets req.user.
+ * Avoids Fastify plugin/scope/decorator races by being a plain async function.
+ */
+export async function requireAuthHook(req: FastifyRequest, reply: FastifyReply) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) {
+    return reply.code(401).send({ error: "missing bearer token" });
   }
-  fastify.addHook("preHandler", async (req: FastifyRequest, reply) => {
-    const auth = req.headers.authorization;
-    if (!auth?.startsWith("Bearer ")) {
-      return reply.code(401).send({ error: "missing bearer token" });
-    }
-    try {
-      (req as { user?: SessionPayload }).user = verifySession(auth.slice(7));
-    } catch {
-      return reply.code(401).send({ error: "invalid or expired token" });
-    }
-  });
-};
+  try {
+    (req as FastifyRequest & { user: SessionPayload }).user = verifySession(auth.slice(7));
+  } catch {
+    return reply.code(401).send({ error: "invalid or expired token" });
+  }
+}

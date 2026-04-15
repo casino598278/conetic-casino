@@ -47,10 +47,15 @@ export class GameEngine extends EventEmitter {
 
   start() {
     ensureHouseUser();
-    // On boot: refund any unresolved rounds.
-    for (const r of findUnresolvedRounds()) this.refundRound(r);
+    // On boot: refund any unresolved rounds (server crashed mid-round).
+    const stale = findUnresolvedRounds();
+    for (const r of stale) {
+      console.log(`[engine] refunding stale round ${r.id} (status=${r.status})`);
+      this.refundRound(r);
+    }
     this.scheduleNextRound();
     this.tickTimer = setInterval(() => this.emit("tick", this.getSnapshot()), 250);
+    console.log("[engine] started");
   }
 
   stop() {

@@ -50,6 +50,7 @@ export default function App() {
   const [showFair, setShowFair] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
 
   // Auth + initial /me + WS subscribe.
   useEffect(() => {
@@ -66,6 +67,10 @@ export default function App() {
         setBalance(BigInt(me.balanceNano));
 
         const sock = getSocket();
+        sock.on("connect", () => setWsConnected(true));
+        sock.on("disconnect", () => setWsConnected(false));
+        sock.on("connect_error", () => setWsConnected(false));
+        if (sock.connected) setWsConnected(true);
         sock.on(SERVER_EVENTS.LobbyState, (s: LobbySnapshot) => setSnapshot(s));
         sock.on(SERVER_EVENTS.PlayerJoined, (e: { snapshot: LobbySnapshot }) => setSnapshot(e.snapshot));
         sock.on(SERVER_EVENTS.RoundCommit, (_e) => clearLive());
@@ -110,13 +115,23 @@ export default function App() {
     <div className="app">
       <header className="header">
         <h1>🎰 Conetic Casino</h1>
-        <button
-          className="balance-pill"
-          onClick={() => setShowWallet(true)}
-          style={{ background: "var(--panel)" }}
-        >
-          💎 {fmtTon(balance.toString())} TON
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {!wsConnected && (
+            <span
+              title="Reconnecting…"
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "var(--danger)",
+                animation: "toast-in 1s ease-in-out infinite alternate",
+              }}
+            />
+          )}
+          <button className="balance-pill" onClick={() => setShowWallet(true)}>
+            💎 {fmtTon(balance.toString())} TON
+          </button>
+        </div>
       </header>
 
       <div className="pot-row">
