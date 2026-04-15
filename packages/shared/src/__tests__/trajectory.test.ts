@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { simulateTrajectory } from "../trajectory.js";
 
-describe("trajectory (orbit)", () => {
+describe("trajectory (spin → shoot)", () => {
   it("identical seed → identical resting point", () => {
     const seed = "deadbeef".repeat(8);
     const a = simulateTrajectory(seed);
@@ -11,15 +11,20 @@ describe("trajectory (orbit)", () => {
     expect(a.steps.length).toEqual(b.steps.length);
   });
 
-  it("resting point lies on the perimeter", () => {
+  it("resting point lies within the arena bounds", () => {
     const seed = "ab".repeat(32);
     const r = simulateTrajectory(seed);
-    const onEdge =
-      Math.abs(Math.abs(r.resting.x) - 1) < 1e-3 ||
-      Math.abs(Math.abs(r.resting.y) - 1) < 1e-3;
-    expect(onEdge).toBe(true);
     expect(Math.abs(r.resting.x)).toBeLessThanOrEqual(1.001);
     expect(Math.abs(r.resting.y)).toBeLessThanOrEqual(1.001);
+  });
+
+  it("trajectory has distinct spin and shoot phases", () => {
+    const seed = "11" + "ff".repeat(31);
+    const r = simulateTrajectory(seed);
+    const spinSteps = r.steps.filter((s) => s.phase === "spin").length;
+    const shootSteps = r.steps.filter((s) => s.phase === "shoot").length;
+    expect(spinSteps).toBeGreaterThan(0);
+    expect(shootSteps).toBeGreaterThan(0);
   });
 
   it("simulation terminates within max time", () => {

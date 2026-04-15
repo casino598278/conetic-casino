@@ -25,12 +25,12 @@ const PIX_PER_UNIT = 180; // logical [-1,1] → 360px
 interface ArenaState {
   wedgeContainer: Container;     // wedge fills (bottom layer)
   avatarContainer: Container;    // avatars on top of wedges
-  ballContainer: Container;      // moving ball + username label
+  ballContainer: Container;      // ball + arrow + label
   overlayContainer: Container;   // winner reveal
   wedges: Wedge[];
   ball: Container | null;
-  ballHighlight: Graphics | null; // rotating tick mark inside the ball
-  ballLabel: Text | null;         // username text above the ball
+  arrow: Graphics | null;        // pointing arrow during SPIN phase
+  ballLabel: Text | null;
   winnerOverlay: Container | null;
   rafSpin: number | null;
   rafZoom: number | null;
@@ -80,7 +80,7 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
           overlayContainer,
           wedges: [],
           ball: null,
-          ballHighlight: null,
+          arrow: null,
           ballLabel: null,
           winnerOverlay: null,
           rafSpin: null,
@@ -126,9 +126,10 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
           st.ball.position.set(0, 0);
           st.ball.scale.set(0.4);
         }
-        if (st.ballHighlight) {
-          st.ballHighlight.alpha = 0;
-          st.ballHighlight.rotation = 0;
+        if (st.arrow) {
+          st.arrow.visible = false;
+          st.arrow.alpha = 0;
+          st.arrow.rotation = 0;
         }
         if (st.ballLabel) {
           st.ballLabel.visible = false;
@@ -142,7 +143,7 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
         st.ballContainer.removeChildren();
         st.wedges = [];
         st.ball = null;
-        st.ballHighlight = null;
+        st.arrow = null;
         st.ballLabel = null;
         return;
       }
@@ -175,7 +176,7 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
     }
   }, [snapshot]);
 
-  // Run ball orbit animation
+  // Spin → Shoot animation
   useEffect(() => {
     const st = stateRef.current;
     if (!st || !trajectorySeed || liveStartedAt == null) return;
@@ -184,60 +185,84 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
     clearOverlay(st);
     ensureBall(st);
 
-    // Pre-compute pixel-space steps.
-    const stepsPx = traj.steps.map((s) => ({ x: s.x * PIX_PER_UNIT, y: s.y * PIX_PER_UNIT, angle: s.angle, t: s.t }));
+    const stepsPx = traj.steps.map((s) => ({
+      phase: s.phase,
+      x: s.x * PIX_PER_UNIT,
+      y: s.y * PIX_PER_UNIT,
+      angle: s.angle,
+      t: s.t,
+    }));
 
     if (st.ball) {
-      const first = stepsPx[0]!;
-      st.ball.position.set(first.x, first.y);
+      st.ball.position.set(0, 0);
       st.ball.visible = true;
-      st.ball.scale.set(0.5);
+      st.ball.scale.set(0.4);
     }
-    if (st.ballHighlight) st.ballHighlight.alpha = 1;
+    if (st.arrow) {
+      st.arrow.position.set(0, 0);
+      st.arrow.visible = true;
+      st.arrow.alpha = 0;
+      st.arrow.rotation = 0;
+    }
     if (st.ballLabel) {
-      st.ballLabel.visible = true;
-      st.ballLabel.position.set(stepsPx[0]!.x, stepsPx[0]!.y - 30);
+      st.ballLabel.visible = false;
+      st.ballLabel.text = "";
     }
 
     if (st.rafSpin) cancelAnimationFrame(st.rafSpin);
     const startWall = performance.now();
     const totalMs = traj.durationMs;
-    // Ball pop-in over first 600ms.
-    const POP_IN = 600;
+    const POP_IN = 350;
 
     const animate = () => {
       const elapsed = performance.now() - startWall;
       const idx = Math.min(stepsPx.length - 1, Math.floor(elapsed / ARENA.SIM_DT_MS));
       const step = stepsPx[idx]!;
 
+      // Ball pop-in
       if (st.ball) {
         st.ball.position.set(step.x, step.y);
         if (elapsed < POP_IN) {
           const t = elapsed / POP_IN;
-          st.ball.scale.set(0.5 + (1 - Math.pow(1 - t, 3)) * 0.5);
+          st.ball.scale.set(0.4 + (1 - Math.pow(1 - t, 3)) * 0.6);
         } else if (st.ball.scale.x < 1) {
           st.ball.scale.set(1);
         }
       }
-      if (st.ballHighlight) st.ballHighlight.rotation = step.angle;
 
-      // Update label to show username of the wedge currently under the ball.
-      if (st.ballLabel) {
-        st.ballLabel.position.set(step.x, step.y - (ARENA.BALL_RADIUS * PIX_PER_UNIT + 12));
-        const wedge = wedgeAt(st.wedges, step);
-        if (wedge && snapshot) {
-          const player = snapshot.players.find((p) => p.userId === wedge.userId);
-          const name = player?.username ? `@${player.username}` : player?.firstName ?? "";
-          if (st.ballLabel.text !== name) st.ballLabel.text = name;
+      // Arrow visible during SPIN; hidden during SHOOT
+      if (st.arrow) {
+        if (step.phase === "spin") {
+          st.arrow.position.set(0, 0);
+          st.arrow.rotation = step.angle;
+          st.arrow.alpha = Math.min(1, elapsed / POP_IN);
+        } else if (st.arrow.visible) {
+          st.arrow.visible = false;
         }
       }
 
-      // Gentle camera zoom on the ball over the last 40% of the spin.
-      const zoomStart = totalMs * 0.6;
-      if (elapsed >= zoomStart) {
+      // Username label tracks the moving ball during SHOOT
+      if (st.ballLabel) {
+        if (step.phase === "shoot") {
+          st.ballLabel.visible = true;
+          st.ballLabel.position.set(step.x, step.y - (ARENA.BALL_RADIUS * PIX_PER_UNIT + 12));
+          const wedge = wedgeAt(st.wedges, step);
+          if (wedge && snapshot) {
+            const player = snapshot.players.find((p) => p.userId === wedge.userId);
+            const name = player?.username ? `@${player.username}` : player?.firstName ?? "";
+            if (st.ballLabel.text !== name) st.ballLabel.text = name;
+          }
+        } else {
+          st.ballLabel.visible = false;
+        }
+      }
+
+      // Gentle camera zoom on ball during the last 35% of the SHOOT phase
+      const zoomStart = totalMs * 0.65;
+      if (elapsed >= zoomStart && step.phase === "shoot") {
         const z = Math.min(1, (elapsed - zoomStart) / Math.max(1, totalMs - zoomStart));
         const eased = 1 - Math.pow(1 - z, 3);
-        const scale = 1 + eased * 0.55;
+        const scale = 1 + eased * 0.45;
         const tx = -step.x * eased;
         const ty = -step.y * eased;
         for (const c of [st.wedgeContainer, st.avatarContainer, st.ballContainer]) {
@@ -294,10 +319,10 @@ function ensureBall(st: ArenaState) {
   const ball = new Container();
   const r = ARENA.BALL_RADIUS * PIX_PER_UNIT;
 
-  // Outer soft white glow
+  // Outer glow
   const glow = new Graphics();
-  glow.circle(0, 0, r * 1.7).fill({ color: 0xffffff, alpha: 0.18 });
-  glow.circle(0, 0, r * 1.3).fill({ color: 0xffffff, alpha: 0.30 });
+  glow.circle(0, 0, r * 1.7).fill({ color: 0xffffff, alpha: 0.16 });
+  glow.circle(0, 0, r * 1.3).fill({ color: 0xffffff, alpha: 0.28 });
   ball.addChild(glow);
 
   // White core
@@ -305,22 +330,33 @@ function ensureBall(st: ArenaState) {
   core.circle(0, 0, r).fill({ color: 0xffffff });
   ball.addChild(core);
 
-  // Subtle red highlight inside the ball (matches Portals reference)
-  const highlight = new Graphics();
-  highlight.circle(0, 0, r * 0.55).fill({ color: 0xff5050, alpha: 0.55 });
-  ball.addChild(highlight);
-
-  // Tiny rotating tick on top of the ball — rotates with the ball's angular position
-  const tick = new Graphics();
-  const tickLen = r * 0.7;
-  tick.moveTo(0, 0).lineTo(tickLen, 0).stroke({ color: 0x111111, width: 3, cap: "round", alpha: 0.35 });
-  tick.alpha = 0;
-  ball.addChild(tick);
+  // Subtle red highlight inside (Portals look)
+  const hi = new Graphics();
+  hi.circle(0, 0, r * 0.55).fill({ color: 0xff5050, alpha: 0.5 });
+  ball.addChild(hi);
 
   ball.visible = false;
   st.ballContainer.addChild(ball);
 
-  // Username label above the ball
+  // Aiming arrow that rotates around the centre during SPIN phase
+  const arrow = new Graphics();
+  const len = r * 1.8;
+  arrow
+    .moveTo(r * 1.1, 0)
+    .lineTo(r * 1.1 + len, 0)
+    .stroke({ color: 0xffffff, width: 4, cap: "round" });
+  // Arrowhead
+  const tipX = r * 1.1 + len;
+  arrow
+    .moveTo(tipX, 0)
+    .lineTo(tipX - 8, -6)
+    .lineTo(tipX - 8, 6)
+    .closePath()
+    .fill({ color: 0xffffff });
+  arrow.visible = false;
+  st.ballContainer.addChild(arrow);
+
+  // Username label above the ball during SHOOT phase
   const label = new Text({
     text: "",
     style: {
@@ -336,7 +372,7 @@ function ensureBall(st: ArenaState) {
   st.ballContainer.addChild(label);
 
   st.ball = ball;
-  st.ballHighlight = tick;
+  st.arrow = arrow;
   st.ballLabel = label;
 }
 

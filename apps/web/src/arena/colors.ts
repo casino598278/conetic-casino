@@ -1,17 +1,17 @@
-// Cool steel-blue / accent palette — distinct but harmonious for a casino theme.
+// Warm gold-leaning palette — distinct but harmonious for a casino theme.
 const PALETTE = [
-  0x6db3ff, // sky
-  0x9aa9c8, // steel
-  0xf5c863, // gold
-  0x6ee3a3, // mint
+  0xf5c14b, // gold
+  0xff8a4c, // amber
   0xff6b78, // coral
+  0x6ee3a3, // mint
   0xb39dff, // lavender
   0x4ad6e8, // cyan
-  0xffa463, // amber
+  0xffe14c, // butter
   0xa3e36e, // lime
   0xff8fc7, // pink
-  0x7a8cff, // periwinkle
   0xe6c891, // sand
+  0xffa463, // tangerine
+  0x9aa9c8, // steel
 ];
 
 export function colorForUser(userId: string): number {
