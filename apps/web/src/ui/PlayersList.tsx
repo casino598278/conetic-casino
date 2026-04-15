@@ -54,7 +54,6 @@ export function PlayersList({ snapshot }: Props) {
         <div className="hash-row">
           <HashPill hash={snapshot?.serverSeedHash ?? null} />
         </div>
-        <div className="empty-players">Be the first to stake.</div>
       </div>
     );
   }
