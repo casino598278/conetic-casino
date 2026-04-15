@@ -50,6 +50,18 @@ export function initPointerFromSeed(seedHex: string): PointerState {
   };
 }
 
+/** Derive a random spawn position inside the arena from the seed (deterministic). */
+export function initSpawnFromSeed(seedHex: string): Point {
+  // Reverse the seed bytes so we get an independent PRNG stream from the pointer.
+  const buf = hexToBuf(seedHex);
+  const reversed = new Uint8Array(buf.length);
+  for (let i = 0; i < buf.length; i++) reversed[i] = buf[buf.length - 1 - i]!;
+  const rng = new Xoshiro256ss(reversed);
+  // Spawn within central 70% of arena (stay clear of edges).
+  const inner = ARENA.HALF_SIDE * 0.7;
+  return { x: rng.range(-inner, inner), y: rng.range(-inner, inner) };
+}
+
 export function simulateTrajectory(seedHex: string): TrajectoryResult {
   const start = initPointerFromSeed(seedHex);
   const state: PointerState = { ...start };

@@ -3,6 +3,7 @@ import { Application, Container, Graphics, Sprite, Text, Texture, Assets } from 
 import {
   ARENA,
   buildWedges,
+  initSpawnFromSeed,
   simulateTrajectory,
   type LobbySnapshot,
   type RoundResult,
@@ -117,6 +118,17 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
           c.position.set(PIX_PER_UNIT, PIX_PER_UNIT);
           c.alpha = 1;
         }
+        // Hide ball + reset its local transforms for the next spin.
+        if (st.ball) {
+          st.ball.visible = false;
+          st.ball.position.set(0, 0);
+          st.ball.scale.set(0.4);
+        }
+        if (st.pointer) {
+          st.pointer.alpha = 0;
+          st.pointer.position.set(0, 0);
+          st.pointer.rotation = 0;
+        }
       }
 
       if (players.length === 0 || potNano === 0n) {
@@ -165,22 +177,65 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
     try { traj = simulateTrajectory(trajectorySeed); } catch (err) { console.error(err); return; }
     clearOverlay(st);
     ensureBall(st);
-    if (st.pointer) st.pointer.alpha = 1;
+
+    // Place the ball at a deterministic random spawn point inside the arena.
+    const spawn = initSpawnFromSeed(trajectorySeed);
+    const spawnPx = { x: spawn.x * PIX_PER_UNIT, y: spawn.y * PIX_PER_UNIT };
+    if (st.ball) {
+      st.ball.position.set(spawnPx.x, spawnPx.y);
+      st.ball.visible = false;
+      st.ball.scale.set(0.4); // pop in
+    }
+    if (st.pointer) {
+      st.pointer.position.set(spawnPx.x, spawnPx.y);
+      st.pointer.alpha = 1;
+    }
 
     if (st.rafSpin) cancelAnimationFrame(st.rafSpin);
     const startWall = performance.now();
+    const totalMs = traj.durationMs;
+    // Reveal ball during the last ~25% of the spin, zoom toward it during last ~35%.
+    const ballRevealAt = totalMs * 0.7;
+    const zoomStartAt = totalMs * 0.55;
 
     const animate = () => {
       const elapsed = performance.now() - startWall;
       const idx = Math.min(traj.steps.length - 1, Math.floor(elapsed / ARENA.SIM_DT_MS));
       const step = traj.steps[idx]!;
       if (st.pointer) st.pointer.rotation = step.angle;
+
+      // Late ball spawn — fades + scales in
+      if (st.ball) {
+        if (elapsed >= ballRevealAt) {
+          st.ball.visible = true;
+          const t = Math.min(1, (elapsed - ballRevealAt) / Math.max(1, totalMs - ballRevealAt));
+          const eased = 1 - Math.pow(1 - t, 3);
+          st.ball.scale.set(0.4 + eased * 0.6); // 0.4 → 1.0
+        }
+      }
+
+      // Camera zoom toward the ball as spin decelerates.
+      if (elapsed >= zoomStartAt) {
+        const z = Math.min(1, (elapsed - zoomStartAt) / Math.max(1, totalMs - zoomStartAt));
+        const eased = 1 - Math.pow(1 - z, 3);
+        const scale = 1 + eased * 0.9;             // 1 → 1.9
+        const tx = -spawnPx.x * eased;
+        const ty = -spawnPx.y * eased;
+        for (const c of [st.wedgeContainer, st.avatarContainer, st.ballContainer]) {
+          c.scale.set(scale);
+          c.position.set(PIX_PER_UNIT + tx * scale, PIX_PER_UNIT + ty * scale);
+        }
+      }
+
       if (idx >= traj.steps.length - 1) { st.rafSpin = null; return; }
       st.rafSpin = requestAnimationFrame(animate);
     };
     st.rafSpin = requestAnimationFrame(animate);
 
-    return () => { if (st.rafSpin) cancelAnimationFrame(st.rafSpin); };
+    return () => {
+      if (st.rafSpin) cancelAnimationFrame(st.rafSpin);
+      // Don't reset transforms here — winner reveal effect handles that.
+    };
   }, [trajectorySeed, liveStartedAt]);
 
   // Winner reveal
@@ -221,42 +276,34 @@ function ensureBall(st: ArenaState) {
   const ball = new Container();
   const r = ARENA.BALL_RADIUS * PIX_PER_UNIT;
 
-  // Outer glow ring (white aura)
+  // Outer soft white glow
   const glow = new Graphics();
-  glow.circle(0, 0, r * 1.65).fill({ color: 0xffffff, alpha: 0.18 });
-  glow.circle(0, 0, r * 1.35).fill({ color: 0xffffff, alpha: 0.28 });
+  glow.circle(0, 0, r * 1.7).fill({ color: 0xffffff, alpha: 0.16 });
+  glow.circle(0, 0, r * 1.3).fill({ color: 0xffffff, alpha: 0.28 });
   ball.addChild(glow);
 
-  // Dark core
+  // White core
   const core = new Graphics();
-  core.circle(0, 0, r).fill({ color: 0x0d0d0d });
-  core.stroke({ color: 0xffffff, width: 2, alpha: 0.95 });
+  core.circle(0, 0, r).fill({ color: 0xffffff });
   ball.addChild(core);
 
-  // White crescent highlight (3D feel) — small offset white circle, masked
+  // Subtle red highlight inside the ball (matches Portals reference)
   const highlight = new Graphics();
-  highlight.circle(-r * 0.3, -r * 0.3, r * 0.45).fill({ color: 0xffffff, alpha: 0.55 });
+  highlight.circle(0, 0, r * 0.55).fill({ color: 0xff5050, alpha: 0.55 });
   ball.addChild(highlight);
 
-  // Pointer arrow rotating around the ball
+  // Tiny pointer pip — short tick rotating around the ball at its edge
   const pointer = new Graphics();
-  // Arrow shaft from ball edge outward
-  const len = PIX_PER_UNIT * 0.8;
+  const tickLen = r * 0.9;
   pointer
     .moveTo(r, 0)
-    .lineTo(len, 0)
-    .stroke({ color: 0xffffff, width: 4, cap: "round" });
-  // Arrowhead
-  pointer
-    .moveTo(len, 0)
-    .lineTo(len - 14, -8)
-    .lineTo(len - 14, 8)
-    .closePath()
-    .fill({ color: 0xffffff });
+    .lineTo(r + tickLen, 0)
+    .stroke({ color: 0xffffff, width: 3, cap: "round" });
   pointer.alpha = 0; // hidden until spin starts
   st.ballContainer.addChild(pointer);
 
   st.ballContainer.addChild(ball);
+  ball.visible = false; // hidden until late in the spin
   st.ball = ball;
   st.pointer = pointer;
 }
@@ -318,22 +365,31 @@ async function placeAvatar(
 
 function showWinnerReveal(st: ArenaState, winner: Wedge, _username: string, _photoUrl: string | null) {
   clearOverlay(st);
-  if (!st.pointer) return;
 
-  // Make the winner's wedge "claim" the whole arena: scale wedges + avatars
-  // and translate so winner centroid moves to (0,0). Pointer + ball fade out.
+  // Capture current zoomed-in transform (ended up near the ball).
+  const startScale = st.wedgeContainer.scale.x;
+  const startX = st.wedgeContainer.position.x;
+  const startY = st.wedgeContainer.position.y;
+
+  // Final transform: focus on winner's wedge centroid at slightly higher scale.
+  const finalScale = Math.max(startScale, 2.0);
   const targetX = -winner.centroid.x * PIX_PER_UNIT;
   const targetY = -winner.centroid.y * PIX_PER_UNIT;
+  const finalX = PIX_PER_UNIT + targetX * finalScale;
+  const finalY = PIX_PER_UNIT + targetY * finalScale;
+
   const start = performance.now();
-  const DUR = 1100;
+  const DUR = 700;
 
   const animate = () => {
     const t = Math.min(1, (performance.now() - start) / DUR);
     const eased = 1 - Math.pow(1 - t, 3);
-    const scale = 1 + eased * 1.2; // grow more dramatic
-    for (const c of [st.wedgeContainer, st.avatarContainer]) {
+    const scale = startScale + (finalScale - startScale) * eased;
+    const x = startX + (finalX - startX) * eased;
+    const y = startY + (finalY - startY) * eased;
+    for (const c of [st.wedgeContainer, st.avatarContainer, st.ballContainer]) {
       c.scale.set(scale);
-      c.position.set(PIX_PER_UNIT + targetX * scale, PIX_PER_UNIT + targetY * scale);
+      c.position.set(x, y);
     }
     st.ballContainer.alpha = 1 - eased;
     if (t < 1) st.rafZoom = requestAnimationFrame(animate);
@@ -343,13 +399,13 @@ function showWinnerReveal(st: ArenaState, winner: Wedge, _username: string, _pho
 
   // Reset for next round after the reveal display time.
   setTimeout(() => {
-    for (const c of [st.wedgeContainer, st.avatarContainer]) {
+    for (const c of [st.wedgeContainer, st.avatarContainer, st.ballContainer]) {
       c.scale.set(1);
       c.position.set(PIX_PER_UNIT, PIX_PER_UNIT);
     }
     st.ballContainer.alpha = 1;
     clearOverlay(st);
-  }, 3200);
+  }, 3500);
 }
 
 function clearOverlay(st: ArenaState) {
