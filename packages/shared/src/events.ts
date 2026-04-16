@@ -26,6 +26,12 @@ export const SERVER_EVENTS = {
   RoundCommit: "round:commit",
   RoundLive: "round:live",
   RoundResult: "round:result",
+  // Mining game
+  MiningState: "mining:state",
+  MiningTick: "mining:tick",
+  MiningCommit: "mining:commit",
+  MiningLive: "mining:live",
+  MiningResult: "mining:result",
   Error: "error",
 } as const;
 

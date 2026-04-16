@@ -15,7 +15,9 @@ import { registerBetRoutes } from "./http/routes.bet.js";
 import { registerWalletRoutes } from "./http/routes.wallet.js";
 import { registerRoundRoutes } from "./http/routes.rounds.js";
 import { registerAvatarRoutes } from "./http/routes.avatar.js";
+import { registerMiningRoutes } from "./http/routes.mining.js";
 import { engine } from "./game/engine.js";
+import { miningEngine } from "./game/miningEngine.js";
 import { attachGateway } from "./ws/gateway.js";
 import { startTonWatcher, stopTonWatcher } from "./wallet/ton/watcher.js";
 import { startTonSender, stopTonSender } from "./wallet/ton/sender.js";
@@ -74,6 +76,7 @@ async function main() {
       await registerWalletRoutes(api);
       await registerRoundRoutes(api);
       await registerAvatarRoutes(api);
+      await registerMiningRoutes(api);
     },
     { prefix: "/api" },
   );
@@ -107,6 +110,7 @@ async function main() {
   app.log.info(`API listening on :${config.API_PORT}`);
 
   engine.start();
+  miningEngine.start();
   startTonWatcher();
   startTonSender();
   startBot();
@@ -114,6 +118,7 @@ async function main() {
   const shutdown = async () => {
     app.log.info("shutting down");
     engine.stop();
+    miningEngine.stop();
     stopTonWatcher();
     stopTonSender();
     await app.close();

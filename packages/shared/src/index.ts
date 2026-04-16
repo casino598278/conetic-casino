@@ -5,3 +5,4 @@ export * from "./events.js";
 export * from "./dto.js";
 export * from "./wedges.js";
 export * from "./trajectory.js";
+export * from "./mining.js";

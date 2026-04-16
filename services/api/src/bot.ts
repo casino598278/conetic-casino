@@ -60,6 +60,10 @@ export function startBot() {
     await ctx.reply("Tap to open the arena.", { reply_markup: openKb() });
   });
 
+  bot.command("mine", async (ctx) => {
+    await ctx.reply("Open the app and tap MINING to play the mining race.", { reply_markup: openKb() });
+  });
+
   bot.command("balance", async (ctx) => {
     const from = ctx.from;
     if (!from) return;
@@ -123,6 +127,7 @@ export function startBot() {
     bot.api
       .setMyCommands([
         { command: "play", description: "Open the arena" },
+        { command: "mine", description: "Open mining race" },
         { command: "balance", description: "Check your balance" },
         { command: "deposit", description: "Get your deposit address" },
         { command: "withdraw", description: "Withdraw TON" },

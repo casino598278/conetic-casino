@@ -42,6 +42,28 @@ export const RoundResult = z.object({
 });
 export type RoundResult = z.infer<typeof RoundResult>;
 
+export const MiningSnapshot = z.object({
+  roundId: z.number().int(),
+  displayId: z.number().int().optional(),
+  phase: RoundPhase,
+  players: z.array(PlayerEntry),
+  potNano: z.string(),
+  countdownEndsAt: z.number().nullable(),
+  serverSeedHash: z.string().length(64).nullable(),
+});
+export type MiningSnapshot = z.infer<typeof MiningSnapshot>;
+
+export const MiningResultEvent = z.object({
+  roundId: z.number().int(),
+  winnerUserId: z.string(),
+  winnerPayoutNano: z.string(),
+  rakeNano: z.string(),
+  serverSeedHex: z.string().length(64),
+  trajectorySeedHex: z.string().length(64),
+  finalGems: z.array(z.object({ userId: z.string(), gems: z.number() })),
+});
+export type MiningResultEvent = z.infer<typeof MiningResultEvent>;
+
 // Arena geometry constants — shared so server + client agree.
 export const ARENA = {
   HALF_SIDE: 1.0,            // logical units; client scales to pixels

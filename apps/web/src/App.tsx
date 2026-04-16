@@ -7,6 +7,8 @@ import { WinScreen } from "./ui/WinScreen";
 import { GamePills } from "./ui/GamePills";
 import { HistoryModal } from "./ui/HistoryModal";
 import { Leaderboard } from "./ui/Leaderboard";
+import { MiningGame } from "./ui/MiningGame";
+import { useMiningStore } from "./state/miningStore";
 import { useLobbyStore } from "./state/lobbyStore";
 import { useWalletStore } from "./state/walletStore";
 import { api, login } from "./net/api";
@@ -54,6 +56,16 @@ export default function App() {
   const [showWallet, setShowWallet] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [activeGame, setActiveGame] = useState<"arena" | "mining">("arena");
+
+  const miningSnap = useMiningStore((s) => s.snapshot);
+  const miningSeed = useMiningStore((s) => s.liveTrajectorySeed);
+  const miningStartedAt = useMiningStore((s) => s.liveStartedAt);
+  const miningResult = useMiningStore((s) => s.lastResult);
+  const setMiningSnap = useMiningStore((s) => s.setSnapshot);
+  const setMiningLive = useMiningStore((s) => s.setLive);
+  const setMiningResult = useMiningStore((s) => s.setResult);
+  const clearMiningLive = useMiningStore((s) => s.clearLive);
   const [authError, setAuthError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -116,6 +128,13 @@ export default function App() {
         sock.on("balance:update", (b: { balanceNano: string }) => {
           setBalance(BigInt(b.balanceNano));
         });
+        // Mining game events
+        sock.on(SERVER_EVENTS.MiningState, (s: any) => setMiningSnap(s));
+        sock.on(SERVER_EVENTS.MiningCommit, () => clearMiningLive());
+        sock.on(SERVER_EVENTS.MiningLive, (e: { trajectorySeedHex: string; startedAt: number }) =>
+          setMiningLive(e.trajectorySeedHex, e.startedAt),
+        );
+        sock.on(SERVER_EVENTS.MiningResult, (r: any) => setMiningResult(r));
       } catch (err: any) {
         setAuthError(err.message ?? "auth failed");
       }
@@ -190,40 +209,58 @@ export default function App() {
 
       <GamePills refreshKey={pillsRefreshKey} onOpenHistory={() => setShowHistory(true)} />
 
-      <div className="pot-row">
-        <div>Total <strong>{fmtTon(pot)}</strong></div>
-        <div>
-          {isLive ? (
-            <span className="live">LIVE</span>
-          ) : phase === "COUNTDOWN" ? (
-            <span className="countdown">Starts in {countdown}</span>
-          ) : phase === "RESOLVED" ? (
-            <span className="live">Winner!</span>
-          ) : (
-            <span className="waiting">
-              {playersJoined < 2
-                ? `Waiting for players (${playersJoined}/2)`
-                : "Starting…"}
-            </span>
-          )}
-        </div>
+      <div className="game-switch">
+        <button className={activeGame === "arena" ? "active" : ""} onClick={() => setActiveGame("arena")}>Arena</button>
+        <button className={activeGame === "mining" ? "active" : ""} onClick={() => setActiveGame("mining")}>Mining</button>
       </div>
 
-      <div className="arena-wrap">
-        <div className="arena">
-          <ArenaCanvas
-            snapshot={snapshot}
-            trajectorySeed={liveSeed}
-            liveStartedAt={liveStartedAt}
-            result={lastResult}
-            currentUserId={user?.id ?? null}
-          />
-        </div>
-      </div>
+      {activeGame === "arena" ? (
+        <>
+          <div className="pot-row">
+            <div>Total <strong>{fmtTon(pot)}</strong></div>
+            <div>
+              {isLive ? (
+                <span className="live">LIVE</span>
+              ) : phase === "COUNTDOWN" ? (
+                <span className="countdown">Starts in {countdown}</span>
+              ) : phase === "RESOLVED" ? (
+                <span className="live">Winner!</span>
+              ) : (
+                <span className="waiting">
+                  {playersJoined < 2
+                    ? `Waiting for players (${playersJoined}/2)`
+                    : "Starting…"}
+                </span>
+              )}
+            </div>
+          </div>
 
-      <PlayersList snapshot={snapshot} />
+          <div className="arena-wrap">
+            <div className="arena">
+              <ArenaCanvas
+                snapshot={snapshot}
+                trajectorySeed={liveSeed}
+                liveStartedAt={liveStartedAt}
+                result={lastResult}
+                currentUserId={user?.id ?? null}
+              />
+            </div>
+          </div>
 
-      <BetBar disabled={!canBet} onError={(m) => showToast(m)} />
+          <PlayersList snapshot={snapshot} />
+
+          <BetBar disabled={!canBet} onError={(m) => showToast(m)} />
+        </>
+      ) : (
+        <MiningGame
+          snapshot={miningSnap}
+          trajectorySeed={miningSeed}
+          liveStartedAt={miningStartedAt}
+          result={miningResult}
+          currentUserId={user?.id ?? null}
+          onError={(m) => showToast(m)}
+        />
+      )}
 
       <div className="tabs">
         <button className="active">Arena</button>

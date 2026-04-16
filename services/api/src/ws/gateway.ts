@@ -2,6 +2,7 @@ import { Server } from "socket.io";
 import type { FastifyInstance } from "fastify";
 import { SERVER_EVENTS } from "@conetic/shared";
 import { engine } from "../game/engine.js";
+import { miningEngine } from "../game/miningEngine.js";
 import { verifySession } from "../auth/jwt.js";
 import { getBalanceNano } from "../db/repo/ledger.js";
 
@@ -57,6 +58,8 @@ export function attachGateway(fastify: FastifyInstance): Server {
       }
     }
     socket.emit(SERVER_EVENTS.LobbyState, engine.getSnapshot());
+    socket.join("mining:global");
+    socket.emit(SERVER_EVENTS.MiningState, miningEngine.getSnapshot());
   });
 
   // Engine → broadcast
@@ -68,6 +71,19 @@ export function attachGateway(fastify: FastifyInstance): Server {
   engine.on("roundCommit", (e) => io.to("lobby:global").emit(SERVER_EVENTS.RoundCommit, e));
   engine.on("roundLive", (e) => io.to("lobby:global").emit(SERVER_EVENTS.RoundLive, e));
   engine.on("roundResult", (e) => io.to("lobby:global").emit(SERVER_EVENTS.RoundResult, e));
+  // Mining engine broadcasts
+  miningEngine.on("snapshot", (snap) => io.to("mining:global").emit(SERVER_EVENTS.MiningState, snap));
+  miningEngine.on("playerJoined", (snap) => io.to("mining:global").emit(SERVER_EVENTS.MiningState, snap));
+  miningEngine.on("tickLite", (e: { countdownEndsAt: number | null }) =>
+    io.to("mining:global").emit(SERVER_EVENTS.MiningTick, { countdownEndsAt: e.countdownEndsAt }),
+  );
+  miningEngine.on("roundCommit", (e) => io.to("mining:global").emit(SERVER_EVENTS.MiningCommit, e));
+  miningEngine.on("roundLive", (e) => io.to("mining:global").emit(SERVER_EVENTS.MiningLive, e));
+  miningEngine.on("roundResult", (e) => io.to("mining:global").emit(SERVER_EVENTS.MiningResult, e));
+  miningEngine.on("balanceChanged", (e: { userId: string; balanceNano: bigint }) => {
+    io.to(`user:${e.userId}`).emit("balance:update", { balanceNano: e.balanceNano.toString() });
+  });
+
   engine.on("balanceChanged", (e: { userId: string; balanceNano: bigint }) => {
     io.to(`user:${e.userId}`).emit("balance:update", { balanceNano: e.balanceNano.toString() });
   });
