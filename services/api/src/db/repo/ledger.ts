@@ -100,8 +100,8 @@ export function debit(input: {
 }
 
 export class InsufficientBalanceError extends Error {
-  constructor(userId: string, available: bigint, requested: bigint) {
-    super(`insufficient balance: user=${userId} available=${available} requested=${requested}`);
+  constructor(_userId: string, _available: bigint, _requested: bigint) {
+    super("insufficient balance");
     this.name = "InsufficientBalanceError";
   }
 }

@@ -31,19 +31,22 @@ async function main() {
     logger: config.NODE_ENV === "development"
       ? { transport: { target: "pino-pretty", options: { translateTime: "HH:MM:ss" } } }
       : true,
+    bodyLimit: 16384, // 16KB max request body
   });
 
-  // CORS: allow configured origin + the public URL (same-origin in prod)
+  // CORS: exact-match only. Same-origin (no header) always allowed.
   const allowedOrigins = new Set(
-    [config.CORS_ORIGIN, config.PUBLIC_WEB_URL].filter(Boolean),
+    [
+      config.CORS_ORIGIN,
+      config.PUBLIC_WEB_URL,
+      "https://web.telegram.org",
+      "https://desktop.telegram.org",
+    ].filter(Boolean),
   );
   await app.register(cors, {
     origin: (origin, cb) => {
-      // Same-origin requests have no Origin header.
-      if (!origin) return cb(null, true);
+      if (!origin) return cb(null, true); // same-origin
       if (allowedOrigins.has(origin)) return cb(null, true);
-      // Allow Telegram WebApp origins.
-      if (origin.endsWith(".telegram.org") || origin.endsWith(".t.me")) return cb(null, true);
       return cb(null, false);
     },
     credentials: true,

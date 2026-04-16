@@ -27,7 +27,23 @@ export function attachGateway(fastify: FastifyInstance): Server {
     }
   });
 
+  // Max 10 connections per IP to prevent WS flood.
+  const connPerIp = new Map<string, number>();
+  const MAX_CONN_PER_IP = 10;
+
   io.on("connection", (socket) => {
+    const ip = socket.handshake.address ?? "unknown";
+    const cur = connPerIp.get(ip) ?? 0;
+    if (cur >= MAX_CONN_PER_IP) {
+      socket.disconnect(true);
+      return;
+    }
+    connPerIp.set(ip, cur + 1);
+    socket.on("disconnect", () => {
+      const n = (connPerIp.get(ip) ?? 1) - 1;
+      if (n <= 0) connPerIp.delete(ip); else connPerIp.set(ip, n);
+    });
+
     socket.join("lobby:global");
     const session = (socket.data as any).session;
     if (session?.sub) {

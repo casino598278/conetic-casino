@@ -27,6 +27,19 @@ import { generateServerSeed, sha256Hex } from "./fair.js";
 import { notifyUser } from "../bot.js";
 
 const BET_LOCK_BUFFER_MS = 2000;
+const BET_RATE_WINDOW_MS = 10000;
+const BET_RATE_MAX = 5;
+const betRateMap = new Map<string, number[]>();
+
+function checkBetRate(userId: string): boolean {
+  const now = Date.now();
+  const stamps = betRateMap.get(userId) ?? [];
+  const recent = stamps.filter((t) => now - t < BET_RATE_WINDOW_MS);
+  if (recent.length >= BET_RATE_MAX) return false;
+  recent.push(now);
+  betRateMap.set(userId, recent);
+  return true;
+}
 const NANO = 1_000_000_000n;
 function fmtNano(n: bigint): string {
   const w = n / NANO;
@@ -126,6 +139,7 @@ export class GameEngine extends EventEmitter {
       return { ok: false, error: "phase_closed" };
     }
 
+    if (!checkBetRate(input.userId)) return { ok: false, error: "phase_closed" };
     const minNano = BigInt(Math.floor(config.MIN_BET_TON * 1e9));
     const maxNano = BigInt(Math.floor(config.MAX_BET_TON * 1e9));
     if (input.amountNano < minNano) return { ok: false, error: "below_min" };

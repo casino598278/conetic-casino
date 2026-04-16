@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
+// Exact-match hosts only — no .endsWith() to prevent subdomain abuse.
 const ALLOWED_HOSTS = new Set([
   "t.me",
   "telegram.org",
@@ -10,6 +11,7 @@ const ALLOWED_HOSTS = new Set([
   "cdn4.telesco.pe",
   "cdn5.telesco.pe",
 ]);
+const MAX_AVATAR_BYTES = 512 * 1024; // 512KB max
 
 // Tiny LRU — Telegram avatars are small (~30KB) and reused across multiple
 // users in a round, so caching them server-side saves CDN hits + latency.
@@ -52,10 +54,12 @@ export async function registerAvatarRoutes(app: FastifyInstance) {
     try { parsed = new URL(q.url); }
     catch { return reply.code(400).send({ error: "bad url" }); }
 
-    const hostOk =
-      ALLOWED_HOSTS.has(parsed.host) ||
-      [...ALLOWED_HOSTS].some((h) => parsed.host.endsWith("." + h) || parsed.host === h);
-    if (!hostOk) return reply.code(403).send({ error: "host not allowed" });
+    if (!ALLOWED_HOSTS.has(parsed.hostname)) {
+      return reply.code(403).send({ error: "host not allowed" });
+    }
+    if (parsed.protocol !== "https:") {
+      return reply.code(400).send({ error: "https only" });
+    }
 
     const cacheKey = parsed.toString();
     const hit = cacheGet(cacheKey);
@@ -74,6 +78,9 @@ export async function registerAvatarRoutes(app: FastifyInstance) {
       });
       if (!upstream.ok) return reply.code(upstream.status).send({ error: "upstream failed" });
       const buf = Buffer.from(await upstream.arrayBuffer());
+      if (buf.byteLength > MAX_AVATAR_BYTES) {
+        return reply.code(413).send({ error: "too large" });
+      }
       const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
       cacheSet(cacheKey, { buf, contentType, expiresAt: Date.now() + CACHE_TTL_MS });
       reply
