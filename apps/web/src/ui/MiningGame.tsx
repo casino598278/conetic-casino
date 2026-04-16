@@ -60,6 +60,8 @@ function useCountdown(endsAt: number | null): string {
 export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, currentUserId, onError }: Props) {
   const balance = useWalletStore((s) => s.balanceNano);
   const [busy, setBusy] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [customAmt, setCustomAmt] = useState("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const avatarImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
 
@@ -144,23 +146,30 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
           const cx = offX + (g.x + 0.5) * cellSize;
           const cy = offY + (g.y + 0.5) * cellSize;
           const def = GEMS[g.type as GemType];
-          // Rare gems are bigger + have a glow
+          // Rarer gems are bigger + glow more
           const sizeRatio =
-            g.type === "diamond" ? 0.48 :
-            g.type === "amethyst" ? 0.42 :
-            g.type === "sapphire" ? 0.37 : 0.32;
+            g.type === "ruby" ? 0.52 :
+            g.type === "diamond" ? 0.46 :
+            g.type === "amethyst" ? 0.40 :
+            g.type === "sapphire" ? 0.35 : 0.30;
           const r = cellSize * sizeRatio;
           const colorHex = `#${def.color.toString(16).padStart(6, "0")}`;
           ctx.save();
           ctx.translate(cx, cy);
           // Glow for rare gems
-          if (g.type === "diamond" || g.type === "amethyst") {
+          if (g.type === "ruby") {
             ctx.shadowColor = colorHex;
-            ctx.shadowBlur = g.type === "diamond" ? 14 : 8;
+            ctx.shadowBlur = 18;
+          } else if (g.type === "diamond") {
+            ctx.shadowColor = colorHex;
+            ctx.shadowBlur = 14;
+          } else if (g.type === "amethyst") {
+            ctx.shadowColor = colorHex;
+            ctx.shadowBlur = 8;
           }
           ctx.fillStyle = colorHex;
           ctx.strokeStyle = "#ffffff";
-          ctx.lineWidth = g.type === "diamond" ? 2 : 1.2;
+          ctx.lineWidth = g.type === "ruby" || g.type === "diamond" ? 2 : 1.2;
           // Diamond shape
           ctx.beginPath();
           ctx.moveTo(0, -r);
@@ -301,10 +310,11 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
       </div>
 
       <div className="mining-legend">
-        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.emerald.color.toString(16).padStart(6, "0")}` }} />1pt</span>
-        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.sapphire.color.toString(16).padStart(6, "0")}` }} />3pt</span>
-        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.amethyst.color.toString(16).padStart(6, "0")}` }} />8pt</span>
-        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.diamond.color.toString(16).padStart(6, "0")}` }} />25pt</span>
+        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.emerald.color.toString(16).padStart(6, "0")}` }} />{GEMS.emerald.value}</span>
+        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.sapphire.color.toString(16).padStart(6, "0")}` }} />{GEMS.sapphire.value}</span>
+        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.amethyst.color.toString(16).padStart(6, "0")}` }} />{GEMS.amethyst.value}</span>
+        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.diamond.color.toString(16).padStart(6, "0")}` }} />{GEMS.diamond.value}</span>
+        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.ruby.color.toString(16).padStart(6, "0")}` }} />{GEMS.ruby.value}</span>
       </div>
 
       <div className="mining-arena-wrap" style={{ position: "relative" }}>
@@ -347,6 +357,19 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
       </div>
 
       <div className="bet-bar">
+        <button
+          className="bet-preset bet-edit"
+          type="button"
+          disabled={busy || isLive || phase === "RESOLVED"}
+          onClick={() => setEditorOpen(true)}
+          title="Custom amount"
+          aria-label="Custom amount"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+          </svg>
+        </button>
         {PRESETS.map((p) => {
           const nano = tonToNano(p);
           const tooPoor = nano > balance;
@@ -371,6 +394,60 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
           All-in
         </button>
       </div>
+
+      {editorOpen && (
+        <div className="modal-bg" onClick={() => setEditorOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Custom bet</h3>
+            <div style={{ color: "var(--t3)", fontSize: 12, marginBottom: 8 }}>
+              Balance: {fmtTon(balance.toString())} TON
+            </div>
+            <input
+              autoFocus
+              className="bet-input"
+              style={{ width: "100%", marginBottom: 10 }}
+              type="number"
+              inputMode="decimal"
+              placeholder="Amount in TON"
+              value={customAmt}
+              onChange={(e) => setCustomAmt(e.target.value)}
+              onKeyDown={async (e) => {
+                if (e.key === "Enter") {
+                  const ton = parseFloat(customAmt);
+                  if (!Number.isFinite(ton) || ton <= 0) { onError?.("invalid amount"); return; }
+                  await stake(tonToNano(ton));
+                  setEditorOpen(false);
+                  setCustomAmt("");
+                }
+              }}
+              min={0}
+              step="0.1"
+            />
+            <button
+              className="primary"
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                const ton = parseFloat(customAmt);
+                if (!Number.isFinite(ton) || ton <= 0) { onError?.("invalid amount"); return; }
+                await stake(tonToNano(ton));
+                setEditorOpen(false);
+                setCustomAmt("");
+              }}
+            >
+              {busy ? "Placing…" : "Stake"}
+            </button>
+            <button
+              className="bet-preset"
+              type="button"
+              style={{ width: "100%", marginTop: 8 }}
+              onClick={() => setEditorOpen(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

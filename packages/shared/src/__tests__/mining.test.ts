@@ -30,9 +30,10 @@ describe("mining (2D map with gem types)", () => {
 
   it("gem types have correct values", () => {
     expect(GEMS.emerald.value).toBe(1);
-    expect(GEMS.sapphire.value).toBe(3);
-    expect(GEMS.amethyst.value).toBe(8);
-    expect(GEMS.diamond.value).toBe(25);
+    expect(GEMS.sapphire.value).toBe(5);
+    expect(GEMS.amethyst.value).toBe(15);
+    expect(GEMS.diamond.value).toBe(40);
+    expect(GEMS.ruby.value).toBe(100);
   });
 
   it("frames include gems with types", () => {
@@ -48,6 +49,6 @@ describe("mining (2D map with gem types)", () => {
   });
 
   it("target points constant is set", () => {
-    expect(MINING.TARGET_POINTS).toBe(200);
+    expect(MINING.TARGET_POINTS).toBe(100);
   });
 });

@@ -11,11 +11,11 @@ export const MINING = {
   TICK_MS: 100,
   DURATION_MS: 15000,
   GEMS_ON_MAP: 15,
-  TARGET_POINTS: 200,        // first-to-N points wins
+  TARGET_POINTS: 100,        // first-to-N points wins
   LUCK_MULTIPLIER: 10,       // how much stake influences "chase rare gems" behaviour
 } as const;
 
-export type GemType = "emerald" | "sapphire" | "amethyst" | "diamond";
+export type GemType = "emerald" | "sapphire" | "amethyst" | "diamond" | "ruby";
 
 export interface GemDef {
   type: GemType;
@@ -25,13 +25,14 @@ export interface GemDef {
 }
 
 export const GEMS: Record<GemType, GemDef> = {
-  emerald: { type: "emerald", value: 1, weight: 60, color: 0x6ee3a3 },
-  sapphire: { type: "sapphire", value: 3, weight: 25, color: 0x4c8aff },
-  amethyst: { type: "amethyst", value: 8, weight: 12, color: 0xb266ff },
-  diamond: { type: "diamond", value: 25, weight: 3, color: 0xffffff },
+  emerald:  { type: "emerald",  value: 1,   weight: 55, color: 0x6ee3a3 },
+  sapphire: { type: "sapphire", value: 5,   weight: 25, color: 0x4c8aff },
+  amethyst: { type: "amethyst", value: 15,  weight: 13, color: 0xb266ff },
+  diamond:  { type: "diamond",  value: 40,  weight: 5,  color: 0xffffff },
+  ruby:     { type: "ruby",     value: 100, weight: 2,  color: 0xff3355 },
 } as const;
 
-const GEM_TYPES: GemType[] = ["emerald", "sapphire", "amethyst", "diamond"];
+const GEM_TYPES: GemType[] = ["emerald", "sapphire", "amethyst", "diamond", "ruby"];
 const GEM_WEIGHT_TOTAL = GEM_TYPES.reduce((s, t) => s + GEMS[t].weight, 0);
 
 export interface Point2D { x: number; y: number; }
