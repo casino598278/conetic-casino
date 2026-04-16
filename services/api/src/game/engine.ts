@@ -27,6 +27,12 @@ import { generateServerSeed, sha256Hex } from "./fair.js";
 import { notifyUser } from "../bot.js";
 
 const BET_LOCK_BUFFER_MS = 2000;
+const NANO = 1_000_000_000n;
+function fmtNano(n: bigint): string {
+  const w = n / NANO;
+  const f = (n % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+  return f ? `${w}.${f}` : `${w}`;
+}
 
 export type JoinResult =
   | { ok: true; snapshot: LobbySnapshot }
@@ -45,6 +51,7 @@ export class GameEngine extends EventEmitter {
   private countdownTimer: NodeJS.Timeout | null = null;
   private liveTimer: NodeJS.Timeout | null = null;
   private tickTimer: NodeJS.Timeout | null = null;
+  private waitingTimeout: NodeJS.Timeout | null = null;
 
   start() {
     ensureHouseUser();
@@ -70,6 +77,7 @@ export class GameEngine extends EventEmitter {
     if (this.countdownTimer) clearTimeout(this.countdownTimer);
     if (this.liveTimer) clearTimeout(this.liveTimer);
     if (this.tickTimer) clearInterval(this.tickTimer);
+    this.cancelWaitingTimeout();
   }
 
   getSnapshot(): LobbySnapshot {
@@ -150,7 +158,11 @@ export class GameEngine extends EventEmitter {
     if (this.phase === "WAITING") {
       const bets = getBetsForRound(this.currentRoundId!);
       if (bets.length >= 2) {
+        this.cancelWaitingTimeout();
         this.beginCountdown();
+      } else if (bets.length === 1 && !this.waitingTimeout) {
+        // First player joined — start 5min refund timer.
+        this.waitingTimeout = setTimeout(() => this.refundWaitingRound(), 5 * 60 * 1000);
       }
     }
 
@@ -185,6 +197,36 @@ export class GameEngine extends EventEmitter {
       countdownEndsAt: 0, // 0 means waiting for players
     });
     this.emit("snapshot", this.getSnapshot());
+  }
+
+  private cancelWaitingTimeout() {
+    if (this.waitingTimeout) {
+      clearTimeout(this.waitingTimeout);
+      this.waitingTimeout = null;
+    }
+  }
+
+  /** 5 min elapsed with only 1 player — refund and start fresh. */
+  private refundWaitingRound() {
+    this.waitingTimeout = null;
+    if (!this.currentRoundId || this.phase !== "WAITING") return;
+    const round = getRound(this.currentRoundId);
+    if (!round) return;
+    const bets = getBetsForRound(round.id);
+    if (bets.length >= 2) return; // race: 2nd player joined just now
+    console.log(`[engine] round ${round.id} waiting timeout — refunding ${bets.length} player(s)`);
+    this.refundRound(round);
+    // Notify refunded players
+    for (const b of bets) {
+      const u = getUserById(b.user_id);
+      if (u) {
+        notifyUser(u.tg_id, `Round #${round.id} expired (no 2nd player). Your ${fmtNano(BigInt(b.amount_nano))} TON has been refunded.`).catch(() => {});
+      }
+    }
+    this.currentRoundId = null;
+    this.phase = "WAITING";
+    this.emit("snapshot", this.getSnapshot());
+    this.scheduleNextRound();
   }
 
   /** Switch the current WAITING round into COUNTDOWN; called when 2nd player joins. */

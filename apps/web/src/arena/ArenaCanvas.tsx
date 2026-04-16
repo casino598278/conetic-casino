@@ -407,6 +407,10 @@ function ensureBall(st: ArenaState) {
   st.ballLabel = label;
 }
 
+/**
+ * Fill the wedge polygon with the player's avatar image (masked to the wedge shape).
+ * Falls back to initials text centered in the wedge if no photo.
+ */
 async function placeAvatar(
   st: ArenaState,
   wedge: Wedge,
@@ -414,42 +418,37 @@ async function placeAvatar(
   epoch: number,
 ) {
   if (epoch !== st.renderEpoch) return;
-  const cx = wedge.centroid.x * PIX_PER_UNIT;
-  const cy = wedge.centroid.y * PIX_PER_UNIT;
-  // Size strategy:
-  //   - dominant (corner === -1): big centred avatar, scaled by their share
-  //   - corner triangles: avatar fits inside the inscribed circle of the right triangle
-  let sizePx: number;
-  if (wedge.corner === -1) {
-    sizePx = Math.min(180, Math.max(90, Math.sqrt(wedge.fraction) * 210));
-  } else {
-    // Triangle legs s = sqrt(8*f) * HALF (in logical units) → pixels.
-    const triSidePx = Math.sqrt(8 * wedge.fraction) * ARENA.HALF_SIDE * PIX_PER_UNIT;
-    // Inscribed-circle diameter = 2 * s * (1 - 1/sqrt(2)) ≈ 0.586 * s
-    // Use 80% of the inscribed diameter for safe margin from triangle edges.
-    const inscribedDiameter = triSidePx * (2 - Math.SQRT2);
-    sizePx = Math.min(70, Math.max(14, inscribedDiameter * 0.8));
-  }
 
   const container = new Container();
-  container.position.set(cx, cy);
 
-  const bg = new Graphics();
-  bg.circle(0, 0, sizePx / 2).fill(0xffffff);
-  bg.stroke({ color: 0xffffff, width: 3, alpha: 0.95 });
-  container.addChild(bg);
+  // Compute bounding box of the wedge polygon in pixel space.
+  const polyPx = wedge.polygon.map((p) => ({ x: p.x * PIX_PER_UNIT, y: p.y * PIX_PER_UNIT }));
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of polyPx) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const boxW = maxX - minX;
+  const boxH = maxY - minY;
+  const cx = wedge.centroid.x * PIX_PER_UNIT;
+  const cy = wedge.centroid.y * PIX_PER_UNIT;
 
+  // Initials fallback — always add, hide if photo loads.
   const initials = (player.firstName ?? "?").slice(0, 2).toUpperCase();
+  const fontSize = Math.max(14, Math.min(boxW, boxH) * 0.35);
   const text = new Text({
     text: initials,
     style: {
-      fontSize: sizePx * 0.4,
+      fontSize,
       fontWeight: "800",
-      fill: colorForUser(wedge.userId),
+      fill: 0xffffff,
       align: "center",
     },
   });
   text.anchor.set(0.5);
+  text.position.set(cx, cy);
   container.addChild(text);
 
   if (epoch === st.renderEpoch) st.avatarContainer.addChild(container);
@@ -457,17 +456,20 @@ async function placeAvatar(
   if (player.photoUrl) {
     try {
       const proxied = `/api/avatar?url=${encodeURIComponent(player.photoUrl)}`;
-      // Bypass Pixi Assets.load (it doesn't sniff query-string URLs reliably).
-      // Load via Image → Texture so the mime is determined by the response, not the URL.
       const img = await loadImageBitmap(proxied);
       if (epoch !== st.renderEpoch) return;
       const tex = Texture.from(img);
       const sprite = new Sprite(tex);
+      // Cover the wedge bounding box (like CSS background-size: cover).
+      const scale = Math.max(boxW / tex.width, boxH / tex.height) * 1.05;
+      sprite.width = tex.width * scale;
+      sprite.height = tex.height * scale;
       sprite.anchor.set(0.5);
-      sprite.width = sizePx;
-      sprite.height = sizePx;
+      sprite.position.set((minX + maxX) / 2, (minY + maxY) / 2);
+      // Mask to the wedge polygon shape.
       const mask = new Graphics();
-      mask.circle(0, 0, sizePx / 2).fill(0xffffff);
+      mask.poly(polyPx);
+      mask.fill(0xffffff);
       container.addChild(mask);
       sprite.mask = mask;
       container.addChild(sprite);
