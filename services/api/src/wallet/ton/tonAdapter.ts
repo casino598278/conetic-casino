@@ -13,19 +13,13 @@ export class TonAdapter implements ChainAdapter {
     return { address: "<<HOT_WALLET>>", memo };
   }
 
-  async parseIncoming(cursor: string | null): Promise<{ nextCursor: string; credits: IncomingDeposit[] }> {
+  async parseIncoming(_cursor: string | null): Promise<{ nextCursor: string; credits: IncomingDeposit[] }> {
     const hw = await getHotWallet();
-    const limit = 25;
-    const opts: { limit: number; lt?: string; hash?: string } = { limit };
-    if (cursor) {
-      const [lt, hash] = cursor.split(":");
-      if (lt && hash) {
-        opts.lt = lt;
-        opts.hash = hash;
-      }
-    }
-
-    const txs = await hw.client.getTransactions(hw.address, opts);
+    // Always fetch the 25 newest transactions. The watcher's caller
+    // uses depositExists() to skip already-credited ones, so re-fetching
+    // the same window every poll is safe and correct. This avoids the
+    // @ton/ton getTransactions "before" pagination which only goes backward.
+    const txs = await hw.client.getTransactions(hw.address, { limit: 25 });
     const credits: IncomingDeposit[] = [];
     let newest: { lt: string; hash: string } | null = null;
 

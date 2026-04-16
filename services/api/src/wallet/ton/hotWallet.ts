@@ -21,10 +21,14 @@ export async function getHotWallet(): Promise<HotWallet> {
   const words = config.HOT_WALLET_MNEMONIC.trim().split(/\s+/);
   const keyPair = await mnemonicToPrivateKey(words);
   const wallet = WalletContractV4.create({ workchain: 0, publicKey: keyPair.publicKey });
+  // Use toncenter with API key if available; otherwise fall back to it without key.
+  // Free tier is rate-limited (1 req/s) but works for low-volume watcher polling.
   const client = new TonClient({
     endpoint: config.TON_ENDPOINT,
     apiKey: config.TON_API_KEY || undefined,
   });
+  // Bump the timeout — toncenter free tier can be slow.
+  (client as any).parameters = { ...(client as any).parameters, timeout: 15000 };
   cached = {
     client,
     wallet,

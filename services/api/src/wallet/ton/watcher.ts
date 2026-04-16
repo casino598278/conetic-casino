@@ -29,12 +29,13 @@ export function startTonWatcher() {
   const tick = async () => {
     try {
       await pollOnce();
-    } catch (err) {
-      console.error("[ton-watcher] poll failed", err);
+    } catch (err: any) {
+      console.error("[ton-watcher] poll failed:", err?.message ?? err);
     } finally {
       timer = setTimeout(tick, POLL_MS);
     }
   };
+  console.log("[ton-watcher] started, polling every", POLL_MS, "ms");
   tick();
 }
 
