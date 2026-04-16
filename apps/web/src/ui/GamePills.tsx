@@ -12,11 +12,11 @@ interface PublicRound {
 }
 
 const NANO = 1_000_000_000n;
-function fmtTon(nanoStr: string | null | undefined): string {
+function fmtTonShort(nanoStr: string | null | undefined): string {
   if (!nanoStr) return "0";
   const n = BigInt(nanoStr);
   const w = n / NANO;
-  const f = (n % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+  const f = (n % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
   return f ? `${w}.${f}` : `${w}`;
 }
 
@@ -47,7 +47,7 @@ export function GamePills({ refreshKey, onOpenHistory }: Props) {
             <span className="game-pill-name">
               {top.winnerUsername ? `@${top.winnerUsername}` : top.winnerFirstName}
             </span>
-            <span className="game-pill-amount">+{fmtTon(top.winnerPayoutNano)}</span>
+            <span className="game-pill-amount">+{fmtTonShort(top.winnerPayoutNano)}</span>
           </div>
         ) : (
           <div className="game-pill-empty">no games yet</div>
@@ -64,7 +64,7 @@ export function GamePills({ refreshKey, onOpenHistory }: Props) {
             <span className="game-pill-name">
               {last.winnerUsername ? `@${last.winnerUsername}` : last.winnerFirstName}
             </span>
-            <span className="game-pill-amount">+{fmtTon(last.winnerPayoutNano)}</span>
+            <span className="game-pill-amount">+{fmtTonShort(last.winnerPayoutNano)}</span>
           </div>
         ) : (
           <div className="game-pill-empty">no games yet</div>

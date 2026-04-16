@@ -624,8 +624,9 @@ input, textarea { font-family: inherit; }
 .game-pill-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   min-height: 22px;
+  overflow: hidden;
 }
 .game-pill-empty {
   font-size: 11px;
@@ -651,7 +652,7 @@ input, textarea { font-family: inherit; }
   color: var(--t2);
 }
 .game-pill-name {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text);
   font-weight: 600;
   white-space: nowrap;
@@ -659,13 +660,15 @@ input, textarea { font-family: inherit; }
   text-overflow: ellipsis;
   flex: 1;
   min-width: 0;
+  max-width: 70px;
 }
 .game-pill-amount {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--t2);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* History modal */
