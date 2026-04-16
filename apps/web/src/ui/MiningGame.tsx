@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MINING,
+  GEMS,
   deriveMiningSeed,
   simulateMining,
   type MiningSnapshot,
   type MiningResultEvent,
+  type GemType,
 } from "@conetic/shared";
 import { api } from "../net/api";
 import { haptic, notify } from "../telegram/initWebApp";
@@ -66,7 +68,7 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
   const pot = snapshot?.potNano ?? "0";
   const countdown = useCountdown(snapshot?.countdownEndsAt ?? null);
 
-  const [liveGems, setLiveGems] = useState<number[]>([]);
+  const [livePoints, setLivePoints] = useState<number[]>([]);
   const sortedPlayers = useMemo(() => [...players].sort((a, b) => (a.userId < b.userId ? -1 : 1)), [players]);
 
   // Preload avatar images
@@ -100,7 +102,7 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
         (p) => Number(BigInt(p.stakeNano) * 1_000_000n / totalNano) / 1_000_000,
       );
       const sim = simulateMining(playerSeeds, stakeFractions, trajectorySeed);
-      setLiveGems(new Array(sortedPlayers.length).fill(0));
+      setLivePoints(new Array(sortedPlayers.length).fill(0));
 
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
@@ -137,25 +139,46 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
         if (!frame) return;
         const prevFrame = frameIdx > 0 ? sim.frames[frameIdx - 1] : frame;
 
-        // Draw gems
+        // Draw gems with type-specific color + size
         for (const g of frame.gems) {
           const cx = offX + (g.x + 0.5) * cellSize;
           const cy = offY + (g.y + 0.5) * cellSize;
-          // Gem shape (diamond)
+          const def = GEMS[g.type as GemType];
+          // Rare gems are bigger + have a glow
+          const sizeRatio =
+            g.type === "diamond" ? 0.48 :
+            g.type === "amethyst" ? 0.42 :
+            g.type === "sapphire" ? 0.37 : 0.32;
+          const r = cellSize * sizeRatio;
+          const colorHex = `#${def.color.toString(16).padStart(6, "0")}`;
           ctx.save();
           ctx.translate(cx, cy);
-          const r = cellSize * 0.35;
-          ctx.fillStyle = "#f5c14b";
-          ctx.strokeStyle = "#ffd76e";
-          ctx.lineWidth = 1.5;
+          // Glow for rare gems
+          if (g.type === "diamond" || g.type === "amethyst") {
+            ctx.shadowColor = colorHex;
+            ctx.shadowBlur = g.type === "diamond" ? 14 : 8;
+          }
+          ctx.fillStyle = colorHex;
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = g.type === "diamond" ? 2 : 1.2;
+          // Diamond shape
           ctx.beginPath();
           ctx.moveTo(0, -r);
-          ctx.lineTo(r * 0.7, 0);
+          ctx.lineTo(r * 0.72, 0);
           ctx.lineTo(0, r);
-          ctx.lineTo(-r * 0.7, 0);
+          ctx.lineTo(-r * 0.72, 0);
           ctx.closePath();
           ctx.fill();
           ctx.stroke();
+          // Inner highlight for all gems
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = "rgba(255,255,255,0.5)";
+          ctx.beginPath();
+          ctx.moveTo(-r * 0.3, -r * 0.3);
+          ctx.lineTo(0, -r * 0.7);
+          ctx.lineTo(r * 0.2, -r * 0.3);
+          ctx.closePath();
+          ctx.fill();
           ctx.restore();
         }
 
@@ -207,16 +230,15 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
         const totalDur = sim.durationMs;
         if (elapsed >= totalDur) {
           render(sim.frames.length - 1, 1);
-          setLiveGems(sim.finalGems);
+          setLivePoints(sim.finalPoints);
           return;
         }
         const frameFloat = elapsed / MINING.TICK_MS;
         const frameIdx = Math.min(sim.frames.length - 1, Math.floor(frameFloat));
         const frameProgress = frameFloat - frameIdx;
         render(frameIdx, frameProgress);
-        // Update gem counts
         const f = sim.frames[frameIdx];
-        if (f) setLiveGems(f.players.map((p) => p.gems));
+        if (f) setLivePoints(f.players.map((p) => p.points));
         rafId = requestAnimationFrame(animate);
       };
       rafId = requestAnimationFrame(animate);
@@ -228,16 +250,16 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
     };
   }, [trajectorySeed, liveStartedAt, sortedPlayers]);
 
-  // When result arrives, snap final gem counts
+  // When result arrives, snap final point counts
   useEffect(() => {
     if (!result) return;
     const sortedIds = sortedPlayers.map((p) => p.userId);
     const arr = new Array(sortedIds.length).fill(0);
-    for (const g of result.finalGems) {
-      const idx = sortedIds.indexOf(g.userId);
-      if (idx >= 0) arr[idx] = g.gems;
+    for (const p of result.finalPoints) {
+      const idx = sortedIds.indexOf(p.userId);
+      if (idx >= 0) arr[idx] = p.points;
     }
-    setLiveGems(arr);
+    setLivePoints(arr);
     if (result.winnerUserId === currentUserId) notify("success");
   }, [result, currentUserId, sortedPlayers]);
 
@@ -278,6 +300,13 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
         </div>
       </div>
 
+      <div className="mining-legend">
+        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.emerald.color.toString(16).padStart(6, "0")}` }} />1pt</span>
+        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.sapphire.color.toString(16).padStart(6, "0")}` }} />3pt</span>
+        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.amethyst.color.toString(16).padStart(6, "0")}` }} />8pt</span>
+        <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.diamond.color.toString(16).padStart(6, "0")}` }} />25pt</span>
+      </div>
+
       <div className="mining-arena-wrap" style={{ position: "relative" }}>
         <canvas
           ref={canvasRef}
@@ -300,7 +329,7 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
       <div className="mining-player-list">
         {sortedPlayers.length === 0 && <div className="empty">Stake to start mining</div>}
         {sortedPlayers.map((p, i) => {
-          const gems = liveGems[i] ?? 0;
+          const points = livePoints[i] ?? 0;
           const isWinner = winnerUserId === p.userId && phase === "RESOLVED";
           const color = colorForUser(p.userId);
           const pct = totalNano > 0n ? Number(BigInt(p.stakeNano) * 10000n / totalNano) / 100 : 0;
@@ -311,7 +340,7 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
               </span>
               <span className="mining-pl-name">{p.username ? `@${p.username}` : p.firstName}</span>
               <span className="mining-pl-pct">{pct.toFixed(1)}%</span>
-              <span className="mining-pl-gems">{gems} 💎</span>
+              <span className="mining-pl-gems">{points} / {MINING.TARGET_POINTS}</span>
             </div>
           );
         })}

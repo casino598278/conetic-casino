@@ -1,5 +1,6 @@
-// 2D mining race: players move around a grid collecting gems.
-// Stake fraction → movement speed + vision range. All deterministic from seeds.
+// 2D mining race with gem types. Players roam a grid, mining gems of varying value.
+// Higher stake = faster movement + wider vision + prefers more valuable gems.
+// All deterministic from seeds.
 
 import { Xoshiro256ss } from "./prng.js";
 import { hexToBuf, hmacSha256, bufToHex } from "./fair.js";
@@ -10,25 +11,45 @@ export const MINING = {
   TICK_MS: 100,
   DURATION_MS: 15000,
   GEMS_ON_MAP: 15,
-  TARGET_GEMS: 100,          // first-to-N wins
+  TARGET_POINTS: 200,        // first-to-N points wins
+  LUCK_MULTIPLIER: 10,       // how much stake influences "chase rare gems" behaviour
 } as const;
 
-export interface Point2D { x: number; y: number; }
+export type GemType = "emerald" | "sapphire" | "amethyst" | "diamond";
 
-/** Snapshot of the world at one tick. */
+export interface GemDef {
+  type: GemType;
+  value: number;
+  weight: number; // spawn weight (relative probability)
+  color: number;  // for rendering
+}
+
+export const GEMS: Record<GemType, GemDef> = {
+  emerald: { type: "emerald", value: 1, weight: 60, color: 0x6ee3a3 },
+  sapphire: { type: "sapphire", value: 3, weight: 25, color: 0x4c8aff },
+  amethyst: { type: "amethyst", value: 8, weight: 12, color: 0xb266ff },
+  diamond: { type: "diamond", value: 25, weight: 3, color: 0xffffff },
+} as const;
+
+const GEM_TYPES: GemType[] = ["emerald", "sapphire", "amethyst", "diamond"];
+const GEM_WEIGHT_TOTAL = GEM_TYPES.reduce((s, t) => s + GEMS[t].weight, 0);
+
+export interface Point2D { x: number; y: number; }
+export interface Gem { x: number; y: number; type: GemType; }
+
+/** One frame of the world. */
 export interface MiningFrame {
-  t: number;                    // ms since start
-  players: { x: number; y: number; gems: number }[];
-  gems: Point2D[];              // active gem positions
+  t: number;
+  players: { x: number; y: number; points: number }[];
+  gems: Gem[];
 }
 
 export interface MiningResult {
   frames: MiningFrame[];
-  finalGems: number[];
+  finalPoints: number[];
   winnerIndex: number;
   tied: boolean;
   durationMs: number;
-  /** How far into the simulation the winner reached TARGET_GEMS (null if ran full time). */
   winReachedAt: number | null;
 }
 
@@ -42,31 +63,63 @@ export async function deriveMiningSeed(
   return bufToHex(mac);
 }
 
-function absDist(a: Point2D, b: Point2D): number {
+function manhattan(a: Point2D, b: Point2D): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
-/** Find nearest gem within vision range (Manhattan). Returns null if none seen. */
-function nearestGem(pos: Point2D, gems: Point2D[], vision: number): Point2D | null {
-  let best: Point2D | null = null;
-  let bestDist = Infinity;
+/** Spawn a random gem of a weighted random type. */
+function spawnGem(rng: Xoshiro256ss, gems: Gem[], players: Point2D[]): Gem | null {
+  const roll = rng.nextFloat() * GEM_WEIGHT_TOTAL;
+  let acc = 0;
+  let type: GemType = "emerald";
+  for (const t of GEM_TYPES) {
+    acc += GEMS[t].weight;
+    if (roll < acc) { type = t; break; }
+  }
+  // Find a free cell
+  for (let attempts = 0; attempts < 50; attempts++) {
+    const x = rng.nextInt(MINING.GRID_SIZE);
+    const y = rng.nextInt(MINING.GRID_SIZE);
+    if (gems.some((g) => g.x === x && g.y === y)) continue;
+    if (players.some((p) => p.x === x && p.y === y)) continue;
+    return { x, y, type };
+  }
+  return null;
+}
+
+/**
+ * Choose the best target gem for this player.
+ * Score = gemValue^(1 + stakeFraction × LUCK_MULT) / (1 + distance)
+ * Low staker: value^1 / distance → nearest wins (commons)
+ * High staker: value^11 / distance → high-value far gem beats close low-value
+ */
+function pickTarget(
+  pos: Point2D,
+  gems: Gem[],
+  vision: number,
+  stakeFraction: number,
+): Gem | null {
+  let best: Gem | null = null;
+  let bestScore = -Infinity;
+  const valueExp = 1 + stakeFraction * MINING.LUCK_MULTIPLIER;
   for (const g of gems) {
-    const d = absDist(pos, g);
-    if (d <= vision && d < bestDist) {
+    const d = manhattan(pos, g);
+    if (d > vision) continue;
+    const v = GEMS[g.type].value;
+    const score = Math.pow(v, valueExp) / (1 + d);
+    if (score > bestScore) {
+      bestScore = score;
       best = g;
-      bestDist = d;
     }
   }
   return best;
 }
 
-/** Step one cell toward a target (prefer the axis with greater delta). */
 function stepToward(pos: Point2D, target: Point2D, rng: Xoshiro256ss): Point2D {
   const dx = target.x - pos.x;
   const dy = target.y - pos.y;
   const absX = Math.abs(dx);
   const absY = Math.abs(dy);
-  // Prefer longer axis, with jitter
   const preferX = absX > absY || (absX === absY && rng.nextFloat() < 0.5);
   let nx = pos.x;
   let ny = pos.y;
@@ -79,7 +132,6 @@ function stepToward(pos: Point2D, target: Point2D, rng: Xoshiro256ss): Point2D {
   };
 }
 
-/** Random wander: step one cell in a random direction (stays on grid). */
 function wander(pos: Point2D, rng: Xoshiro256ss): Point2D {
   const dirs: Point2D[] = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
   const d = dirs[rng.nextInt(4)]!;
@@ -90,10 +142,10 @@ function wander(pos: Point2D, rng: Xoshiro256ss): Point2D {
 }
 
 /**
- * Simulate a mining race.
- * @param playerSeeds  Per-player PRNG seeds (32-byte hex).
- * @param stakeFractions  Each player's stake/pot ratio (0..1). Affects speed + vision.
- * @param worldSeedHex  Seed for gem spawn positions (shared world RNG).
+ * Simulate a mining race with typed gems.
+ * @param playerSeeds  Per-player PRNG seeds.
+ * @param stakeFractions  Each player's stake / pot (0..1).
+ * @param worldSeedHex  Seed for gem placement + starting positions.
  */
 export function simulateMining(
   playerSeeds: string[],
@@ -102,15 +154,13 @@ export function simulateMining(
 ): MiningResult {
   const n = playerSeeds.length;
   if (n === 0) {
-    return { frames: [], finalGems: [], winnerIndex: 0, tied: false, durationMs: 0, winReachedAt: null };
+    return { frames: [], finalPoints: [], winnerIndex: 0, tied: false, durationMs: 0, winReachedAt: null };
   }
 
-  // Per-player PRNG (controls their movement jitter + any rolls)
   const rngs = playerSeeds.map((s) => new Xoshiro256ss(hexToBuf(s)));
-  // Shared world PRNG (controls gem positions + starting positions) so all clients see same layout
   const worldRng = new Xoshiro256ss(hexToBuf(worldSeedHex ?? playerSeeds[0]!));
 
-  // Starting positions: spread around the map corners + center + random
+  // Starting positions
   const positions: Point2D[] = [];
   for (let i = 0; i < n; i++) {
     positions.push({
@@ -120,63 +170,54 @@ export function simulateMining(
   }
 
   // Initial gem layout
-  const gems: Point2D[] = [];
+  const gems: Gem[] = [];
   while (gems.length < MINING.GEMS_ON_MAP) {
-    const p = { x: worldRng.nextInt(MINING.GRID_SIZE), y: worldRng.nextInt(MINING.GRID_SIZE) };
-    if (!gems.some((g) => g.x === p.x && g.y === p.y) && !positions.some((pp) => pp.x === p.x && pp.y === p.y)) {
-      gems.push(p);
-    }
+    const g = spawnGem(worldRng, gems, positions);
+    if (g) gems.push(g);
+    else break;
   }
 
-  const gemCounts = new Array(n).fill(0);
+  const points = new Array(n).fill(0);
   const frames: MiningFrame[] = [];
 
-  // Speed: steps per tick. 1 → 3 based on stake fraction.
-  const speeds = stakeFractions.map((f) => 1 + Math.floor(f * 2 + 0.1));
-  // Vision: Manhattan radius. Bigger stake sees further.
-  const visions = stakeFractions.map((f) => 4 + Math.floor(f * 16));
+  // Speed: 1-3 cells/tick based on stake fraction.
+  const speeds = stakeFractions.map((f) => Math.max(1, Math.min(3, 1 + Math.floor(f * 2.5))));
+  // Vision: 4-20 cell Manhattan radius.
+  const visions = stakeFractions.map((f) => Math.max(4, Math.floor(4 + f * 16)));
 
   let winnerIdx = 0;
   let winReachedAt: number | null = null;
 
   for (let t = 1; t <= MINING.MAX_TICKS; t++) {
-    // Each player takes their turn
     for (let i = 0; i < n; i++) {
       const steps = speeds[i]!;
       for (let s = 0; s < steps; s++) {
-        const target = nearestGem(positions[i]!, gems, visions[i]!);
+        const target = pickTarget(positions[i]!, gems, visions[i]!, stakeFractions[i]!);
         if (target) {
           positions[i] = stepToward(positions[i]!, target, rngs[i]!);
         } else {
           positions[i] = wander(positions[i]!, rngs[i]!);
         }
-        // Collect gem if on its cell
         const hitIdx = gems.findIndex((g) => g.x === positions[i]!.x && g.y === positions[i]!.y);
         if (hitIdx !== -1) {
+          const collected = gems[hitIdx]!;
           gems.splice(hitIdx, 1);
-          gemCounts[i]++;
-          // Respawn a gem elsewhere (not on any player or existing gem)
-          let attempts = 0;
-          while (attempts++ < 50) {
-            const p = { x: worldRng.nextInt(MINING.GRID_SIZE), y: worldRng.nextInt(MINING.GRID_SIZE) };
-            if (gems.some((g) => g.x === p.x && g.y === p.y)) continue;
-            if (positions.some((pp) => pp.x === p.x && pp.y === p.y)) continue;
-            gems.push(p);
-            break;
-          }
+          points[i] += GEMS[collected.type].value;
+          // Respawn a new gem
+          const newGem = spawnGem(worldRng, gems, positions);
+          if (newGem) gems.push(newGem);
         }
       }
     }
     frames.push({
       t: t * MINING.TICK_MS,
-      players: positions.map((p, i) => ({ x: p.x, y: p.y, gems: gemCounts[i]! })),
-      gems: [...gems],
+      players: positions.map((p, i) => ({ x: p.x, y: p.y, points: points[i]! })),
+      gems: gems.map((g) => ({ x: g.x, y: g.y, type: g.type })),
     });
 
-    // Check first-to-N
     if (winReachedAt === null) {
       for (let i = 0; i < n; i++) {
-        if (gemCounts[i]! >= MINING.TARGET_GEMS) {
+        if (points[i]! >= MINING.TARGET_POINTS) {
           winReachedAt = t * MINING.TICK_MS;
           winnerIdx = i;
           break;
@@ -187,24 +228,23 @@ export function simulateMining(
   }
 
   if (winReachedAt === null) {
-    // Time ran out — highest gems wins
-    let max = gemCounts[0]!;
+    let max = points[0]!;
     winnerIdx = 0;
     for (let i = 1; i < n; i++) {
-      if (gemCounts[i]! > max) {
-        max = gemCounts[i]!;
+      if (points[i]! > max) {
+        max = points[i]!;
         winnerIdx = i;
       }
     }
   }
 
-  const maxGems = gemCounts[winnerIdx]!;
+  const maxPoints = points[winnerIdx]!;
   let tieCount = 0;
-  for (const g of gemCounts) if (g === maxGems) tieCount++;
+  for (const p of points) if (p === maxPoints) tieCount++;
 
   return {
     frames,
-    finalGems: gemCounts,
+    finalPoints: points,
     winnerIndex: winnerIdx,
     tied: tieCount > 1,
     durationMs: frames.length > 0 ? frames[frames.length - 1]!.t : 0,

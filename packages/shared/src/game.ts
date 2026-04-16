@@ -60,7 +60,7 @@ export const MiningResultEvent = z.object({
   rakeNano: z.string(),
   serverSeedHex: z.string().length(64),
   trajectorySeedHex: z.string().length(64),
-  finalGems: z.array(z.object({ userId: z.string(), gems: z.number() })),
+  finalPoints: z.array(z.object({ userId: z.string(), points: z.number() })),
 });
 export type MiningResultEvent = z.infer<typeof MiningResultEvent>;
 

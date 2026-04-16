@@ -279,7 +279,7 @@ export class MiningEngine extends EventEmitter {
     const winnerPayoutNano = potNano - rakeNano;
     const houseId = getHouseUserId();
 
-    const finalGems = sortedBets.map((b, i) => ({ userId: b.user_id, gems: result.finalGems[i]! }));
+    const finalPoints = sortedBets.map((b, i) => ({ userId: b.user_id, points: result.finalPoints[i]! }));
 
     txn(() => {
       credit({ userId: winnerBet.user_id, amountNano: winnerPayoutNano, reason: "win", roundId });
@@ -291,7 +291,7 @@ export class MiningEngine extends EventEmitter {
         winnerUserId: winnerBet.user_id,
         winnerPayoutNano,
         rakeNano,
-        finalGems,
+        finalGems: finalPoints.map((p) => ({ userId: p.userId, gems: p.points })),
       });
     });
 
@@ -311,7 +311,7 @@ export class MiningEngine extends EventEmitter {
       rakeNano: rakeNano.toString(),
       serverSeedHex: round.server_seed_hex,
       trajectorySeedHex,
-      finalGems,
+      finalPoints,
     };
     this.emit("roundResult", event);
     this.phase = "RESOLVED";
