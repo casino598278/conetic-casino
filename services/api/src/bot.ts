@@ -132,6 +132,19 @@ export function startBot() {
       return;
     }
     const parts = args.split(/\s+/);
+
+    // Bulk: any of /demo all on, /demo on all, /demo @everyone on, /demo on @everyone
+    const isBulkToken = (p: string) => p === "all" || p === "@everyone" || p === "everyone" || p === "*";
+    if (parts.length === 2 && parts.some(isBulkToken)) {
+      const stateToken = parts.find((p) => !isBulkToken(p))!;
+      const enable = /^on|true|1|yes$/i.test(stateToken);
+      const result = db
+        .prepare("UPDATE users SET demo_mode = ? WHERE is_house = 0")
+        .run(enable ? 1 : 0);
+      await ctx.reply(`Demo mode set to ${enable ? "ON" : "OFF"} for ${result.changes} user(s).`);
+      return;
+    }
+
     let target: string;
     let stateStr: string;
     if (parts.length === 1) {
