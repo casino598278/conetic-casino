@@ -1,15 +1,12 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { config } from "./config.js";
-import { upsertTelegramUser } from "./db/repo/users.js";
-import { credit, getBalanceNano } from "./db/repo/ledger.js";
-import { pushBalance } from "./ws/gateway.js";
+import { upsertTelegramUser, getUserById } from "./db/repo/users.js";
+import { getBalanceNano } from "./db/repo/ledger.js";
+import { getHotWalletAddressString } from "./wallet/ton/tonAdapter.js";
 
 let started = false;
 
 const NANO = 1_000_000_000n;
-const PLAY_MONEY_AMOUNT_NANO = 1000n * NANO; // 1000 TON of play balance per /deposit
-const PLAY_MONEY_DAILY_CAP_NANO = 5000n * NANO;
-
 function fmtTon(nano: bigint): string {
   const w = nano / NANO;
   const f = (nano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
@@ -24,30 +21,33 @@ export function startBot() {
   }
   const bot = new Bot(config.BOT_TOKEN);
 
+  const openKb = () =>
+    new InlineKeyboard().webApp("Open Casino", config.PUBLIC_WEB_URL);
+
   bot.command("start", async (ctx) => {
-    const kb = new InlineKeyboard().webApp("Open Casino", config.PUBLIC_WEB_URL);
     await ctx.reply(
       "Welcome to Conetic Casino.\n\n" +
+        "Stake TON, win the pot. 0.5% rake, provably fair.\n\n" +
         "Commands:\n" +
-        "/play - open the arena\n" +
-        "/deposit - credit 1000 TON test balance (testnet)\n" +
-        "/balance - check your balance",
-      { reply_markup: kb },
+        "/play — open the arena\n" +
+        "/balance — check your balance\n" +
+        "/deposit — get your deposit address\n" +
+        "/withdraw — withdraw TON",
+      { reply_markup: openKb() },
     );
   });
 
   bot.command("play", async (ctx) => {
-    const kb = new InlineKeyboard().webApp("Open Casino", config.PUBLIC_WEB_URL);
-    await ctx.reply("Tap to open the arena.", { reply_markup: kb });
+    await ctx.reply("Tap to open the arena.", { reply_markup: openKb() });
   });
 
   bot.command("balance", async (ctx) => {
-    const tgUser = ctx.from;
-    if (!tgUser) return;
+    const from = ctx.from;
+    if (!from) return;
     const user = upsertTelegramUser({
-      tgId: tgUser.id,
-      username: tgUser.username ?? null,
-      firstName: tgUser.first_name ?? "Player",
+      tgId: from.id,
+      username: from.username ?? null,
+      firstName: from.first_name ?? "Player",
       photoUrl: null,
     });
     const bal = getBalanceNano(user.id);
@@ -55,38 +55,40 @@ export function startBot() {
   });
 
   bot.command("deposit", async (ctx) => {
-    if (config.TON_NETWORK !== "testnet") {
-      await ctx.reply("/deposit is only available on testnet — use the Wallet sheet in the app to deposit real TON.");
-      return;
-    }
-    const tgUser = ctx.from;
-    if (!tgUser) return;
+    const from = ctx.from;
+    if (!from) return;
     const user = upsertTelegramUser({
-      tgId: tgUser.id,
-      username: tgUser.username ?? null,
-      firstName: tgUser.first_name ?? "Player",
+      tgId: from.id,
+      username: from.username ?? null,
+      firstName: from.first_name ?? "Player",
       photoUrl: null,
     });
-    const currentBal = getBalanceNano(user.id);
-    if (currentBal >= PLAY_MONEY_DAILY_CAP_NANO) {
-      await ctx.reply(
-        `You already have ${fmtTon(currentBal)} TON of test balance. ` +
-          `Cap is ${fmtTon(PLAY_MONEY_DAILY_CAP_NANO)} TON — go play /play before topping up more.`,
-      );
+    const fresh = getUserById(user.id);
+    if (!fresh) return;
+
+    let address: string;
+    try {
+      address = await getHotWalletAddressString();
+    } catch {
+      await ctx.reply("Deposits are temporarily unavailable. Try again later.");
       return;
     }
-    credit({
-      userId: user.id,
-      amountNano: PLAY_MONEY_AMOUNT_NANO,
-      reason: "bonus",
-      refId: `play-money:${Date.now()}`,
-    });
-    const newBal = getBalanceNano(user.id);
-    pushBalance(user.id, newBal);
+
+    const network = config.TON_NETWORK === "testnet" ? " (testnet)" : "";
     await ctx.reply(
-      `Credited ${fmtTon(PLAY_MONEY_AMOUNT_NANO)} TON test balance.\n` +
-        `New balance: ${fmtTon(newBal)} TON\n\n` +
-        `Tap /play to start staking.`,
+      `Send TON${network} to:\n` +
+        `\`${address}\`\n\n` +
+        `You MUST include this memo or your deposit won't be credited:\n` +
+        `\`${fresh.memo}\`\n\n` +
+        `Deposits credit automatically within ~10 seconds.`,
+      { parse_mode: "Markdown", reply_markup: openKb() },
+    );
+  });
+
+  bot.command("withdraw", async (ctx) => {
+    await ctx.reply(
+      "Open the Wallet tab in the app to withdraw.",
+      { reply_markup: openKb() },
     );
   });
 
@@ -101,10 +103,10 @@ export function startBot() {
 
     bot.api
       .setMyCommands([
-        { command: "start", description: "Welcome + open the casino" },
         { command: "play", description: "Open the arena" },
-        { command: "deposit", description: "Get 1000 TON test balance (testnet)" },
         { command: "balance", description: "Check your balance" },
+        { command: "deposit", description: "Get your deposit address" },
+        { command: "withdraw", description: "Withdraw TON" },
       ])
       .catch((err) => console.warn("[bot] setMyCommands failed:", err.message));
   } else {

@@ -1,9 +1,10 @@
 import { config } from "../../config.js";
 import { txn } from "../../db/sqlite.js";
-import { credit } from "../../db/repo/ledger.js";
+import { credit, getBalanceNano } from "../../db/repo/ledger.js";
 import { depositExists, getCursor, insertDeposit, setCursor } from "../../db/repo/wallet.js";
 import { getUserByMemo } from "../../db/repo/users.js";
 import { getAdapter } from "../registry.js";
+import { pushBalance } from "../../ws/gateway.js";
 
 let running = false;
 let timer: NodeJS.Timeout | null = null;
@@ -64,6 +65,12 @@ async function pollOnce() {
         refId: `${c.txHash}:${c.lt}`,
       });
     });
+    // Push fresh balance to the user's connected sockets so their UI updates live.
+    try {
+      pushBalance(user.id, getBalanceNano(user.id));
+    } catch (err) {
+      console.warn("[ton-watcher] pushBalance failed", err);
+    }
     console.log(`[ton-watcher] credited ${c.amountNano} nano to ${user.id} (memo=${c.memo})`);
   }
 

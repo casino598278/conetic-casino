@@ -5,6 +5,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
+import compress from "@fastify/compress";
 import { config } from "./config.js";
 import { runMigrations } from "./db/sqlite.js";
 import { ensureHouseUser } from "./db/repo/users.js";
@@ -52,6 +53,8 @@ async function main() {
     max: 60,
     timeWindow: "1 minute",
   });
+  // gzip/brotli for static + API JSON (PixiJS bundle ~580KB → ~180KB compressed)
+  await app.register(compress, { global: true, encodings: ["gzip", "deflate"] });
 
   // Build version: changes every restart, so the frontend can detect new deploys.
   const BUILD_ID = process.env.RENDER_GIT_COMMIT?.slice(0, 8) ?? Date.now().toString();

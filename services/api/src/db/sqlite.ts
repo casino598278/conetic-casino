@@ -11,6 +11,8 @@ export const db: DatabaseType = new Database(config.DB_PATH);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 db.pragma("synchronous = NORMAL");
+// Auto-checkpoint every 1000 pages (~4MB) so the -wal file doesn't grow unbounded.
+db.pragma("wal_autocheckpoint = 1000");
 
 export function runMigrations() {
   const dir = join(__dirname, "migrations");

@@ -46,8 +46,8 @@ export function attachGateway(fastify: FastifyInstance): Server {
   // Engine → broadcast
   engine.on("snapshot", (snap) => io.to("lobby:global").emit(SERVER_EVENTS.LobbyState, snap));
   engine.on("playerJoined", (snap) => io.to("lobby:global").emit(SERVER_EVENTS.PlayerJoined, { snapshot: snap }));
-  engine.on("tick", (snap) =>
-    io.to("lobby:global").emit(SERVER_EVENTS.LobbyTick, { countdownEndsAt: snap.countdownEndsAt }),
+  engine.on("tickLite", (e: { countdownEndsAt: number | null }) =>
+    io.to("lobby:global").emit(SERVER_EVENTS.LobbyTick, { countdownEndsAt: e.countdownEndsAt }),
   );
   engine.on("roundCommit", (e) => io.to("lobby:global").emit(SERVER_EVENTS.RoundCommit, e));
   engine.on("roundLive", (e) => io.to("lobby:global").emit(SERVER_EVENTS.RoundLive, e));

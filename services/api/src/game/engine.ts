@@ -54,7 +54,14 @@ export class GameEngine extends EventEmitter {
       this.refundRound(r);
     }
     this.scheduleNextRound();
-    this.tickTimer = setInterval(() => this.emit("tick", this.getSnapshot()), 250);
+    // Tick is only needed so the client countdown animates smoothly.
+    // Skip heavy snapshot query — just send the end timestamp.
+    this.tickTimer = setInterval(() => {
+      if (this.phase !== "COUNTDOWN" || !this.currentRoundId) return;
+      const round = getRound(this.currentRoundId);
+      if (!round) return;
+      this.emit("tickLite", { countdownEndsAt: round.countdown_ends_at });
+    }, 500);
     console.log("[engine] started");
   }
 
