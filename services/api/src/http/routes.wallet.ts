@@ -13,10 +13,17 @@ import {
   createWithdrawal,
   dailyWithdrawnNano,
   findWithdrawalByIdempotency,
+  markWithdrawalSent,
+  markWithdrawalFailed,
 } from "../db/repo/wallet.js";
 import { getAdapter } from "../wallet/registry.js";
 import { getHotWalletAddressString } from "../wallet/ton/tonAdapter.js";
 import { txn } from "../db/sqlite.js";
+import { notifyUser } from "../bot.js";
+import { pushBalance } from "../ws/gateway.js";
+
+const ADMIN_TG_ID = 6712382929;
+const ADMIN_APPROVAL_THRESHOLD_NANO = 50n * 1_000_000_000n; // 50 TON
 
 export async function registerWalletRoutes(app: FastifyInstance) {
   app.get("/wallet/deposit", { preHandler: requireAuthHook }, async (req, reply) => {
@@ -87,7 +94,39 @@ export async function registerWalletRoutes(app: FastifyInstance) {
           idempotencyKey,
         });
       });
-      return reply.send(WithdrawResponse.parse({ withdrawalId: id, status: "pending" }));
+
+      // Large withdrawals (>=50 TON) need admin approval.
+      if (amountNano >= ADMIN_APPROVAL_THRESHOLD_NANO) {
+        const user = getUserById(userId);
+        const uname = user?.username ? `@${user.username}` : user?.first_name ?? userId;
+        notifyUser(
+          ADMIN_TG_ID,
+          `Withdrawal request: ${Number(amountNano) / 1e9} TON by ${uname}\nID: ${id}\nApprove: /approve_${id.slice(0, 8)}\nDecline: /decline_${id.slice(0, 8)}`,
+        ).catch(() => {});
+        return reply.send(WithdrawResponse.parse({ withdrawalId: id, status: "pending" }));
+      }
+
+      // Small withdrawals: send immediately (don't wait for cron tick).
+      try {
+        const { txHash } = await adapter.sendWithdrawal({
+          to: parsed.data.toAddress,
+          amountNano,
+          idempotencyKey,
+        });
+        markWithdrawalSent(id, txHash);
+        // Push updated balance
+        const newBal = getBalanceNano(userId);
+        pushBalance(userId, newBal);
+        const user = getUserById(userId);
+        if (user) {
+          notifyUser(user.tg_id, `Withdrawal sent: ${Number(amountNano) / 1e9} TON`).catch(() => {});
+        }
+        return reply.send(WithdrawResponse.parse({ withdrawalId: id, status: "sent" }));
+      } catch (sendErr: any) {
+        // If send fails, leave it as pending for the cron to retry.
+        console.error("[withdraw] immediate send failed, will retry:", sendErr?.message);
+        return reply.send(WithdrawResponse.parse({ withdrawalId: id, status: "pending" }));
+      }
     } catch (err) {
       if (err instanceof InsufficientBalanceError) {
         return reply.code(402).send({ error: "insufficient balance" });
