@@ -71,6 +71,23 @@ function toPublic(r: RoundRow): PublicRound {
 export async function registerRoundRoutes(app: FastifyInstance) {
   app.get("/rounds/recent", async () => recentResolvedRounds(25).map(toPublic));
 
+  app.get("/rounds/:id/bets", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const roundId = parseInt(id, 10);
+    if (!Number.isFinite(roundId)) return reply.code(400).send({ error: "bad id" });
+    const bets = getBetsForRound(roundId);
+    return bets.map((b) => {
+      const u = getUserById(b.user_id);
+      return {
+        userId: b.user_id,
+        username: u?.username ?? null,
+        firstName: u?.first_name ?? null,
+        photoUrl: u?.photo_url ?? null,
+        amountNano: b.amount_nano,
+      };
+    });
+  });
+
   app.get("/rounds/top", async () => {
     const r = topResolvedRound();
     return r ? toPublic(r) : null;

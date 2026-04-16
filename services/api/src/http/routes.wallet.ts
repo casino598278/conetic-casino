@@ -24,6 +24,8 @@ import { pushBalance } from "../ws/gateway.js";
 
 const ADMIN_TG_ID = 6712382929;
 const ADMIN_APPROVAL_THRESHOLD_NANO = 50n * 1_000_000_000n; // 50 TON
+const WITHDRAW_COOLDOWN_MS = 3 * 60 * 1000; // 3 minutes between withdrawals
+const lastWithdrawTime = new Map<string, number>();
 
 export async function registerWalletRoutes(app: FastifyInstance) {
   app.get("/wallet/deposit", { preHandler: requireAuthHook }, async (req, reply) => {
@@ -59,6 +61,14 @@ export async function registerWalletRoutes(app: FastifyInstance) {
     if (amountNano <= 0n) return reply.code(400).send({ error: "amount must be positive" });
 
     const userId = req.user.sub;
+
+    // 3-minute cooldown between withdrawals.
+    const lastTime = lastWithdrawTime.get(userId) ?? 0;
+    const elapsed = Date.now() - lastTime;
+    if (elapsed < WITHDRAW_COOLDOWN_MS) {
+      const waitSec = Math.ceil((WITHDRAW_COOLDOWN_MS - elapsed) / 1000);
+      return reply.code(429).send({ error: `wait ${waitSec}s before next withdrawal` });
+    }
     const dailyCapNano = BigInt(Math.floor(config.MAX_DAILY_WITHDRAW_TON * 1e9));
     const alreadyToday = dailyWithdrawnNano(userId, "ton");
     if (alreadyToday + amountNano > dailyCapNano) {
@@ -94,6 +104,10 @@ export async function registerWalletRoutes(app: FastifyInstance) {
           idempotencyKey,
         });
       });
+
+      // Record cooldown timestamp + push balance immediately after debit.
+      lastWithdrawTime.set(userId, Date.now());
+      pushBalance(userId, getBalanceNano(userId));
 
       // Large withdrawals (>=50 TON) need admin approval.
       if (amountNano >= ADMIN_APPROVAL_THRESHOLD_NANO) {

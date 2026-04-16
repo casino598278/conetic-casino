@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../net/api";
 
 interface PublicRound {
@@ -101,31 +101,7 @@ export function HistoryModal({ onClose }: Props) {
           {loading && <div className="empty">Loading…</div>}
           {!loading && filtered.length === 0 && <div className="empty">No games to show</div>}
           {filtered.map((r) => (
-            <div className="history-card" key={r.roundId}>
-              <div className="history-card-row1">
-                <span className="history-mult">{r.multiplier.toFixed(2)}x</span>
-                <span className="history-meta">#{r.roundId} · {r.playerCount} {r.playerCount === 1 ? "player" : "players"}</span>
-              </div>
-              <div className="history-card-row2">
-                <span className="history-avatar">
-                  {r.winnerPhotoUrl ? (
-                    <img src={`/api/avatar?url=${encodeURIComponent(r.winnerPhotoUrl)}`} alt="" />
-                  ) : (
-                    <span>{(r.winnerFirstName ?? r.winnerUsername ?? "?").slice(0, 2).toUpperCase()}</span>
-                  )}
-                </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="history-name">
-                    {r.winnerUsername ? `@${r.winnerUsername}` : r.winnerFirstName ?? "—"}
-                  </div>
-                  <div className="history-time">{fmtTime(r.resolvedAt)}</div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div className="history-amount">{fmtTon(r.winnerPayoutNano)} TON</div>
-                  <div className="history-chance">Chance <span>{(r.chance * 100).toFixed(2)}%</span></div>
-                </div>
-              </div>
-            </div>
+            <HistoryCard key={r.roundId} round={r} />
           ))}
         </div>
 
@@ -133,6 +109,74 @@ export function HistoryModal({ onClose }: Props) {
           Close
         </button>
       </div>
+    </div>
+  );
+}
+
+interface Bet {
+  userId: string;
+  username: string | null;
+  firstName: string | null;
+  photoUrl: string | null;
+  amountNano: string;
+}
+
+function HistoryCard({ round: r }: { round: PublicRound }) {
+  const [expanded, setExpanded] = useState(false);
+  const [bets, setBets] = useState<Bet[] | null>(null);
+
+  const toggle = useCallback(() => {
+    if (!expanded && bets === null) {
+      api<Bet[]>(`/rounds/${r.roundId}/bets`).then(setBets).catch(() => setBets([]));
+    }
+    setExpanded((e) => !e);
+  }, [expanded, bets, r.roundId]);
+
+  return (
+    <div className="history-card" onClick={toggle} style={{ cursor: "pointer" }}>
+      <div className="history-card-row1">
+        <span className="history-mult">{r.multiplier.toFixed(2)}x</span>
+        <span className="history-meta">#{r.roundId} · {r.playerCount} {r.playerCount === 1 ? "player" : "players"}</span>
+      </div>
+      <div className="history-card-row2">
+        <span className="history-avatar">
+          {r.winnerPhotoUrl ? (
+            <img src={`/api/avatar?url=${encodeURIComponent(r.winnerPhotoUrl)}`} alt="" />
+          ) : (
+            <span>{(r.winnerFirstName ?? r.winnerUsername ?? "?").slice(0, 2).toUpperCase()}</span>
+          )}
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="history-name">
+            {r.winnerUsername ? `@${r.winnerUsername}` : r.winnerFirstName ?? "—"}
+          </div>
+          <div className="history-time">{fmtTime(r.resolvedAt)}</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div className="history-amount">{fmtTon(r.winnerPayoutNano)} TON</div>
+          <div className="history-chance">Chance <span>{(r.chance * 100).toFixed(2)}%</span></div>
+        </div>
+      </div>
+
+      {expanded && bets && bets.length > 0 && (
+        <div className="history-bets">
+          {bets.map((b) => (
+            <div className="history-bet-row" key={b.userId}>
+              <span className="history-bet-avatar">
+                {b.photoUrl ? (
+                  <img src={`/api/avatar?url=${encodeURIComponent(b.photoUrl)}`} alt="" />
+                ) : (
+                  <span>{(b.firstName ?? b.username ?? "?").slice(0, 2).toUpperCase()}</span>
+                )}
+              </span>
+              <span className="history-bet-name">
+                {b.username ? `@${b.username}` : b.firstName ?? "—"}
+              </span>
+              <span className="history-bet-amount">{fmtTon(b.amountNano)} TON</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
