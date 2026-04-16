@@ -1,8 +1,11 @@
 import { Bot, InlineKeyboard } from "grammy";
+import { db } from "./db/sqlite.js";
 import { config } from "./config.js";
-import { upsertTelegramUser, getUserById } from "./db/repo/users.js";
+import { upsertTelegramUser, getUserById, setDemoMode } from "./db/repo/users.js";
 import { getBalanceNano } from "./db/repo/ledger.js";
 import { getHotWalletAddressString } from "./wallet/ton/tonAdapter.js";
+
+const ADMIN_TG_ID = 6712382929;
 
 let started = false;
 let botInstance: Bot | null = null;
@@ -106,6 +109,54 @@ export function startBot() {
         `Deposits credit automatically within ~10 seconds.`,
       { parse_mode: "Markdown", reply_markup: openKb() },
     );
+  });
+
+  bot.command("demo", async (ctx) => {
+    const from = ctx.from;
+    if (!from) return;
+    if (from.id !== ADMIN_TG_ID) {
+      await ctx.reply("Demo mode is admin-only.");
+      return;
+    }
+    const args = (ctx.match ?? "").trim();
+    // Forms: "/demo on" | "/demo off" | "/demo @user on" | "/demo 12345 off"
+    if (!args) {
+      const me = upsertTelegramUser({
+        tgId: from.id,
+        username: from.username ?? null,
+        firstName: from.first_name ?? "Player",
+        photoUrl: null,
+      });
+      const updated = setDemoMode(me.id, !me.demo_mode);
+      await ctx.reply(`Demo mode for you: ${updated.demo_mode ? "ON" : "OFF"}`);
+      return;
+    }
+    const parts = args.split(/\s+/);
+    let target: string;
+    let stateStr: string;
+    if (parts.length === 1) {
+      // Just on/off → toggle self
+      target = String(from.id);
+      stateStr = parts[0]!;
+    } else {
+      target = parts[0]!;
+      stateStr = parts[1]!;
+    }
+    const enable = /^on|true|1|yes$/i.test(stateStr);
+    // Find user by tg_id (numeric) or @username
+    let targetUser;
+    if (/^\d+$/.test(target)) {
+      targetUser = db.prepare("SELECT * FROM users WHERE tg_id = ?").get(parseInt(target, 10)) as any;
+    } else {
+      const uname = target.replace(/^@/, "");
+      targetUser = db.prepare("SELECT * FROM users WHERE username = ?").get(uname) as any;
+    }
+    if (!targetUser) {
+      await ctx.reply(`User not found: ${target}`);
+      return;
+    }
+    const updated = setDemoMode(targetUser.id, enable);
+    await ctx.reply(`Demo mode for ${targetUser.username ? "@" + targetUser.username : targetUser.first_name}: ${updated.demo_mode ? "ON" : "OFF"}`);
   });
 
   bot.command("withdraw", async (ctx) => {

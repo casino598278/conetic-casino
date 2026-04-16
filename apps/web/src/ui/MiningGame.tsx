@@ -86,7 +86,11 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
         traj.sortedPlayers.map((p, i) => deriveMiningSeed(traj.seed, p.clientSeedHex, i)),
       );
       if (cancelled) return;
-      const sim = simulateMining(playerSeeds);
+      const totalNano = traj.sortedPlayers.reduce((s, p) => s + BigInt(p.stakeNano), 0n);
+      const stakeFractions = traj.sortedPlayers.map(
+        (p) => Number(BigInt(p.stakeNano) * 1_000_000n / totalNano) / 1_000_000,
+      );
+      const sim = simulateMining(playerSeeds, stakeFractions);
       const totalDur = sim.durationMs;
       const maxFinal = Math.max(...sim.finalGems, 5);
       setMaxGems(maxFinal);

@@ -1,5 +1,6 @@
 import type { Statement } from "better-sqlite3";
 import { db, txn } from "../sqlite.js";
+import { isDemo, getDemoBalance, setDemoBalance } from "./users.js";
 
 export type LedgerReason =
   | "deposit"
@@ -44,13 +45,14 @@ function sumBalance(): Statement {
   return _sumBalance;
 }
 
-/** Get balance in nano-units (uses SQLite int64 SUM — safe for amounts < 2^63). */
+/** Get balance — demo users return their demo_balance instead of ledger sum. */
 export function getBalanceNano(userId: string, chainId = "ton"): bigint {
+  if (chainId === "ton" && isDemo(userId)) return getDemoBalance(userId);
   const row = sumBalance().get(userId, chainId) as { bal: number | bigint };
   return BigInt(row.bal);
 }
 
-/** Append a credit. Must be called from within a txn() if part of a multi-step op. */
+/** Credit. Demo users get their demo_balance bumped instead of a ledger entry. */
 export function credit(input: {
   userId: string;
   chainId?: string;
@@ -60,9 +62,14 @@ export function credit(input: {
   roundId?: number | null;
 }): void {
   if (input.amountNano <= 0n) throw new Error(`credit amount must be positive, got ${input.amountNano}`);
+  const chainId = input.chainId ?? "ton";
+  if (chainId === "ton" && isDemo(input.userId)) {
+    setDemoBalance(input.userId, getDemoBalance(input.userId) + input.amountNano);
+    return;
+  }
   insertEntry().run(
     input.userId,
-    input.chainId ?? "ton",
+    chainId,
     input.amountNano.toString(),
     input.reason,
     input.refId ?? null,
@@ -71,7 +78,7 @@ export function credit(input: {
   );
 }
 
-/** Append a debit. Atomically checks balance >= amount inside a transaction. */
+/** Debit. Demo users debit from demo_balance. */
 export function debit(input: {
   userId: string;
   chainId?: string;
@@ -82,6 +89,14 @@ export function debit(input: {
 }): void {
   if (input.amountNano <= 0n) throw new Error(`debit amount must be positive, got ${input.amountNano}`);
   const chainId = input.chainId ?? "ton";
+  if (chainId === "ton" && isDemo(input.userId)) {
+    const bal = getDemoBalance(input.userId);
+    if (bal < input.amountNano) {
+      throw new InsufficientBalanceError(input.userId, bal, input.amountNano);
+    }
+    setDemoBalance(input.userId, bal - input.amountNano);
+    return;
+  }
   txn(() => {
     const bal = getBalanceNano(input.userId, chainId);
     if (bal < input.amountNano) {

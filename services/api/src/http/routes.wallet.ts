@@ -7,7 +7,7 @@ import {
 } from "@conetic/shared";
 import { config } from "../config.js";
 import { requireAuthHook } from "../auth/authPlugin.js";
-import { getUserById } from "../db/repo/users.js";
+import { getUserById, isDemo } from "../db/repo/users.js";
 import { debit, getBalanceNano, InsufficientBalanceError } from "../db/repo/ledger.js";
 import {
   createWithdrawal,
@@ -61,6 +61,11 @@ export async function registerWalletRoutes(app: FastifyInstance) {
     if (amountNano <= 0n) return reply.code(400).send({ error: "amount must be positive" });
 
     const userId = req.user.sub;
+
+    // Demo mode users cannot withdraw real funds.
+    if (isDemo(userId)) {
+      return reply.code(403).send({ error: "demo mode — withdrawals disabled" });
+    }
 
     // 3-minute cooldown between withdrawals.
     const lastTime = lastWithdrawTime.get(userId) ?? 0;
