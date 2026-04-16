@@ -11,6 +11,7 @@ import { config } from "../config.js";
 import { db, txn } from "../db/sqlite.js";
 import { credit, debit, getBalanceNano, InsufficientBalanceError } from "../db/repo/ledger.js";
 import {
+  countResolvedRounds,
   createRound,
   findUnresolvedRounds,
   getBetsForRound,
@@ -95,9 +96,11 @@ export class GameEngine extends EventEmitter {
   }
 
   getSnapshot(): LobbySnapshot {
+    const displayId = countResolvedRounds() + 1;
     if (!this.currentRoundId) {
       return {
         roundId: 0,
+        displayId,
         phase: "WAITING",
         players: [],
         potNano: "0",
@@ -109,10 +112,10 @@ export class GameEngine extends EventEmitter {
     const players = this.playersForRound(round);
     return {
       roundId: round.id,
+      displayId,
       phase: this.phase,
       players,
       potNano: round.pot_nano,
-      // Only expose endsAt during actual COUNTDOWN — null while WAITING.
       countdownEndsAt: this.phase === "COUNTDOWN" ? round.countdown_ends_at : null,
       serverSeedHash: round.server_seed_hash,
     };

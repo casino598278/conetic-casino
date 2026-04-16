@@ -16,10 +16,12 @@ export type PlayerEntry = z.infer<typeof PlayerEntry>;
 
 export const LobbySnapshot = z.object({
   roundId: z.number().int(),
+  /** Sequential display counter (#1, #2, #3...) — increments on resolved rounds only. */
+  displayId: z.number().int().optional(),
   phase: RoundPhase,
   players: z.array(PlayerEntry),
   potNano: z.string(),
-  countdownEndsAt: z.number().nullable(), // unix ms
+  countdownEndsAt: z.number().nullable(),
   serverSeedHash: z.string().length(64).nullable(),
 });
 export type LobbySnapshot = z.infer<typeof LobbySnapshot>;

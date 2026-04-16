@@ -49,7 +49,7 @@ export function PlayersList({ snapshot }: Props) {
       <div className="players-section">
         <div className="players-header">
           <h2>Players · 0</h2>
-          <span className="meta">Game #{snapshot?.roundId ?? "—"}</span>
+          <span className="meta">Game #{snapshot?.displayId ?? snapshot?.roundId ?? "—"}</span>
         </div>
         <div className="hash-row">
           <HashPill hash={snapshot?.serverSeedHash ?? null} />

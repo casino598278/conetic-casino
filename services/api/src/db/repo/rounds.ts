@@ -87,6 +87,11 @@ export function markLive(roundId: number, trajectorySeedHex: string) {
   );
 }
 
+export function countResolvedRounds(): number {
+  const row = db.prepare("SELECT COUNT(*) as c FROM rounds WHERE status='RESOLVED'").get() as { c: number };
+  return row.c;
+}
+
 export function markResolved(input: {
   roundId: number;
   winnerUserId: string;
