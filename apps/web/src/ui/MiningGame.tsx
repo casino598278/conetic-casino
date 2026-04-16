@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MINING,
   deriveMiningSeed,
@@ -58,79 +58,188 @@ function useCountdown(endsAt: number | null): string {
 export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, currentUserId, onError }: Props) {
   const balance = useWalletStore((s) => s.balanceNano);
   const [busy, setBusy] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const avatarImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
 
   const phase = snapshot?.phase ?? "WAITING";
   const players = snapshot?.players ?? [];
   const pot = snapshot?.potNano ?? "0";
   const countdown = useCountdown(snapshot?.countdownEndsAt ?? null);
 
-  // Live gem counts (animated during LIVE phase, snapped to result on RESOLVED)
   const [liveGems, setLiveGems] = useState<number[]>([]);
-  const [maxGems, setMaxGems] = useState(20);
+  const sortedPlayers = useMemo(() => [...players].sort((a, b) => (a.userId < b.userId ? -1 : 1)), [players]);
 
-  // Pre-compute the full trajectory once we have the seed
-  const traj = useMemo(() => {
-    if (!trajectorySeed || !snapshot || snapshot.players.length === 0) return null;
-    const sortedPlayers = [...snapshot.players].sort((a, b) => (a.userId < b.userId ? -1 : 1));
-    return { sortedPlayers, seed: trajectorySeed };
-  }, [trajectorySeed, snapshot]);
-
-  // Run animation
+  // Preload avatar images
   useEffect(() => {
-    if (!traj || liveStartedAt == null) return;
+    for (const p of sortedPlayers) {
+      if (p.photoUrl && !avatarImagesRef.current.has(p.userId)) {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.src = `/api/avatar?url=${encodeURIComponent(p.photoUrl)}`;
+        avatarImagesRef.current.set(p.userId, img);
+      }
+    }
+  }, [sortedPlayers]);
+
+  // Run the animation
+  useEffect(() => {
+    if (!trajectorySeed || liveStartedAt == null || sortedPlayers.length === 0) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
     let cancelled = false;
-    let raf = 0;
+    let rafId = 0;
 
     (async () => {
       const playerSeeds = await Promise.all(
-        traj.sortedPlayers.map((p, i) => deriveMiningSeed(traj.seed, p.clientSeedHex, i)),
+        sortedPlayers.map((p, i) => deriveMiningSeed(trajectorySeed, p.clientSeedHex, i)),
       );
       if (cancelled) return;
-      const totalNano = traj.sortedPlayers.reduce((s, p) => s + BigInt(p.stakeNano), 0n);
-      const stakeFractions = traj.sortedPlayers.map(
+      const totalNano = sortedPlayers.reduce((s, p) => s + BigInt(p.stakeNano), 0n);
+      const stakeFractions = sortedPlayers.map(
         (p) => Number(BigInt(p.stakeNano) * 1_000_000n / totalNano) / 1_000_000,
       );
-      const sim = simulateMining(playerSeeds, stakeFractions);
-      const totalDur = sim.durationMs;
-      const maxFinal = Math.max(...sim.finalGems, 5);
-      setMaxGems(maxFinal);
-      setLiveGems(new Array(traj.sortedPlayers.length).fill(0));
+      const sim = simulateMining(playerSeeds, stakeFractions, trajectorySeed);
+      setLiveGems(new Array(sortedPlayers.length).fill(0));
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const w = canvas.width;
+      const h = canvas.height;
+      const cellSize = Math.min(w, h) / MINING.GRID_SIZE;
+      const gridPx = cellSize * MINING.GRID_SIZE;
+      const offX = (w - gridPx) / 2;
+      const offY = (h - gridPx) / 2;
 
       const start = performance.now();
-      const tick = () => {
+
+      // Interpolate between frames for smooth movement
+      const render = (frameIdx: number, frameProgress: number) => {
+        ctx.clearRect(0, 0, w, h);
+        // Background
+        ctx.fillStyle = "#161616";
+        ctx.fillRect(0, 0, w, h);
+        // Grid
+        ctx.strokeStyle = "rgba(255,255,255,0.04)";
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= MINING.GRID_SIZE; i++) {
+          ctx.beginPath();
+          ctx.moveTo(offX + i * cellSize, offY);
+          ctx.lineTo(offX + i * cellSize, offY + gridPx);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(offX, offY + i * cellSize);
+          ctx.lineTo(offX + gridPx, offY + i * cellSize);
+          ctx.stroke();
+        }
+
+        const frame = sim.frames[frameIdx];
+        if (!frame) return;
+        const prevFrame = frameIdx > 0 ? sim.frames[frameIdx - 1] : frame;
+
+        // Draw gems
+        for (const g of frame.gems) {
+          const cx = offX + (g.x + 0.5) * cellSize;
+          const cy = offY + (g.y + 0.5) * cellSize;
+          // Gem shape (diamond)
+          ctx.save();
+          ctx.translate(cx, cy);
+          const r = cellSize * 0.35;
+          ctx.fillStyle = "#f5c14b";
+          ctx.strokeStyle = "#ffd76e";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(0, -r);
+          ctx.lineTo(r * 0.7, 0);
+          ctx.lineTo(0, r);
+          ctx.lineTo(-r * 0.7, 0);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Draw players (interpolated between prevFrame and frame)
+        for (let i = 0; i < frame.players.length; i++) {
+          const p = frame.players[i]!;
+          const prev = prevFrame!.players[i]!;
+          const ix = prev.x + (p.x - prev.x) * frameProgress;
+          const iy = prev.y + (p.y - prev.y) * frameProgress;
+          const cx = offX + (ix + 0.5) * cellSize;
+          const cy = offY + (iy + 0.5) * cellSize;
+          const player = sortedPlayers[i]!;
+          const colour = colorForUser(player.userId);
+          const radius = cellSize * 0.5;
+
+          // Outer ring in player colour
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+          ctx.fillStyle = `#${colour.toString(16).padStart(6, "0")}`;
+          ctx.fill();
+
+          // Avatar image (if loaded) clipped to inner circle, else initials
+          const img = avatarImagesRef.current.get(player.userId);
+          if (img && img.complete && img.naturalWidth > 0) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius - 2, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.drawImage(img, cx - radius + 2, cy - radius + 2, (radius - 2) * 2, (radius - 2) * 2);
+            ctx.restore();
+          } else {
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius - 2, 0, Math.PI * 2);
+            ctx.fill();
+            const initials = (player.firstName ?? "?").slice(0, 2).toUpperCase();
+            ctx.fillStyle = `#${colour.toString(16).padStart(6, "0")}`;
+            ctx.font = `bold ${Math.floor(cellSize * 0.5)}px sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(initials, cx, cy);
+          }
+        }
+      };
+
+      const animate = () => {
         if (cancelled) return;
         const elapsed = performance.now() - start;
+        const totalDur = sim.durationMs;
         if (elapsed >= totalDur) {
+          render(sim.frames.length - 1, 1);
           setLiveGems(sim.finalGems);
           return;
         }
-        const idx = Math.min(sim.steps.length - 1, Math.floor(elapsed / MINING.TICK_MS));
-        setLiveGems(sim.steps[idx]!.gems);
-        raf = requestAnimationFrame(tick);
+        const frameFloat = elapsed / MINING.TICK_MS;
+        const frameIdx = Math.min(sim.frames.length - 1, Math.floor(frameFloat));
+        const frameProgress = frameFloat - frameIdx;
+        render(frameIdx, frameProgress);
+        // Update gem counts
+        const f = sim.frames[frameIdx];
+        if (f) setLiveGems(f.players.map((p) => p.gems));
+        rafId = requestAnimationFrame(animate);
       };
-      raf = requestAnimationFrame(tick);
+      rafId = requestAnimationFrame(animate);
     })();
 
     return () => {
       cancelled = true;
-      if (raf) cancelAnimationFrame(raf);
+      if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [traj, liveStartedAt]);
+  }, [trajectorySeed, liveStartedAt, sortedPlayers]);
 
-  // On result, snap final values from server
+  // When result arrives, snap final gem counts
   useEffect(() => {
     if (!result) return;
-    const sortedIds = [...players].map((p) => p.userId).sort();
-    const gemsByIdx = result.finalGems.map((g, _i) => {
-      const idx = sortedIds.indexOf(g.userId);
-      return { idx, gems: g.gems };
-    });
+    const sortedIds = sortedPlayers.map((p) => p.userId);
     const arr = new Array(sortedIds.length).fill(0);
-    for (const g of gemsByIdx) if (g.idx >= 0) arr[g.idx] = g.gems;
+    for (const g of result.finalGems) {
+      const idx = sortedIds.indexOf(g.userId);
+      if (idx >= 0) arr[idx] = g.gems;
+    }
     setLiveGems(arr);
-    setMaxGems(Math.max(...arr, 5));
     if (result.winnerUserId === currentUserId) notify("success");
-  }, [result]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [result, currentUserId, sortedPlayers]);
 
   const stake = async (amountNano: bigint) => {
     if (busy) return;
@@ -153,9 +262,9 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
     }
   };
 
-  const sortedPlayers = useMemo(() => [...players].sort((a, b) => (a.userId < b.userId ? -1 : 1)), [players]);
   const isLive = !!trajectorySeed || phase === "LIVE";
   const winnerUserId = result?.winnerUserId ?? null;
+  const totalNano = sortedPlayers.reduce((s, p) => s + BigInt(p.stakeNano), 0n);
 
   return (
     <>
@@ -169,27 +278,40 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
         </div>
       </div>
 
-      <div className="mining-arena">
-        {sortedPlayers.length === 0 && (
-          <div className="empty">Stake to start mining</div>
+      <div className="mining-arena-wrap" style={{ position: "relative" }}>
+        <canvas
+          ref={canvasRef}
+          width={400}
+          height={400}
+          className="mining-canvas"
+        />
+        {!isLive && (
+          <div style={{
+            position: "absolute", inset: 0, display: "flex",
+            alignItems: "center", justifyContent: "center",
+            color: "var(--t3)", fontSize: 14, fontWeight: 600,
+            pointerEvents: "none",
+          }}>
+            {phase === "COUNTDOWN" ? `Mining starts in ${countdown}` : "Waiting for players…"}
+          </div>
         )}
+      </div>
+
+      <div className="mining-player-list">
+        {sortedPlayers.length === 0 && <div className="empty">Stake to start mining</div>}
         {sortedPlayers.map((p, i) => {
           const gems = liveGems[i] ?? 0;
-          const pct = maxGems > 0 ? Math.min(100, (gems / maxGems) * 100) : 0;
           const isWinner = winnerUserId === p.userId && phase === "RESOLVED";
           const color = colorForUser(p.userId);
+          const pct = totalNano > 0n ? Number(BigInt(p.stakeNano) * 10000n / totalNano) / 100 : 0;
           return (
-            <div className={`mining-row ${isWinner ? "winner" : ""}`} key={p.userId}>
-              <div className="mining-row-head">
-                <span className="mining-avatar" style={{ background: p.photoUrl ? `url(/api/avatar?url=${encodeURIComponent(p.photoUrl)}) center/cover` : `#${color.toString(16).padStart(6, "0")}` }}>
-                  {!p.photoUrl && (p.firstName ?? "?").slice(0, 2).toUpperCase()}
-                </span>
-                <span className="mining-name">{p.username ? `@${p.username}` : p.firstName}</span>
-                <span className="mining-gems">{gems} 💎</span>
-              </div>
-              <div className="mining-bar">
-                <div className="mining-bar-fill" style={{ width: `${pct}%`, background: `#${color.toString(16).padStart(6, "0")}` }} />
-              </div>
+            <div className={`mining-pl ${isWinner ? "winner" : ""}`} key={p.userId}>
+              <span className="mining-pl-avatar" style={{ background: p.photoUrl ? `url(/api/avatar?url=${encodeURIComponent(p.photoUrl)}) center/cover` : `#${color.toString(16).padStart(6, "0")}` }}>
+                {!p.photoUrl && (p.firstName ?? "?").slice(0, 2).toUpperCase()}
+              </span>
+              <span className="mining-pl-name">{p.username ? `@${p.username}` : p.firstName}</span>
+              <span className="mining-pl-pct">{pct.toFixed(1)}%</span>
+              <span className="mining-pl-gems">{gems} 💎</span>
             </div>
           );
         })}

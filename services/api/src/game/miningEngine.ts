@@ -270,7 +270,7 @@ export class MiningEngine extends EventEmitter {
     const playerSeeds = await Promise.all(
       sortedBets.map((b, i) => deriveMiningSeed(round.server_seed_hex, b.client_seed_hex, i)),
     );
-    const result = simulateMining(playerSeeds, stakeFractions);
+    const result = simulateMining(playerSeeds, stakeFractions, trajectorySeedHex);
     const winnerBet = sortedBets[result.winnerIndex]!;
     const potNano = BigInt(round.pot_nano);
     const winnerStake = BigInt(winnerBet.amount_nano);
