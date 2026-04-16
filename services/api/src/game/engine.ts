@@ -310,7 +310,14 @@ export class GameEngine extends EventEmitter {
     const potNano = BigInt(round.pot_nano);
     const { winner, result } = resolveWinner(trajectorySeedHex, players, potNano);
 
-    const rakeNano = (potNano * BigInt(config.RAKE_BPS)) / BigInt(ARENA.BPS_DENOM);
+    // Rake applies only to the winner's NET PROFIT (pot minus their own stake),
+    // not the full pot. So the winner always gets their own stake back in full.
+    const winnerBet = bets.find((b) => b.user_id === winner.userId);
+    const winnerStakeNano = winnerBet ? BigInt(winnerBet.amount_nano) : 0n;
+    const profitNano = potNano - winnerStakeNano;
+    const rakeNano = profitNano > 0n
+      ? (profitNano * BigInt(config.RAKE_BPS)) / BigInt(ARENA.BPS_DENOM)
+      : 0n;
     const winnerPayoutNano = potNano - rakeNano;
     const houseId = getHouseUserId();
 
