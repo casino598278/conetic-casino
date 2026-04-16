@@ -5,12 +5,30 @@ import { getBalanceNano } from "./db/repo/ledger.js";
 import { getHotWalletAddressString } from "./wallet/ton/tonAdapter.js";
 
 let started = false;
+let botInstance: Bot | null = null;
 
 const NANO = 1_000_000_000n;
 function fmtTon(nano: bigint): string {
   const w = nano / NANO;
   const f = (nano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
   return f ? `${w}.${f}` : `${w}`;
+}
+
+/**
+ * Send a plain-text DM to a user by Telegram ID. Safe to call from anywhere;
+ * no-ops if the bot isn't up yet or the user has blocked the bot.
+ */
+export async function notifyUser(tgId: number, text: string, opts?: { markdown?: boolean }) {
+  if (!botInstance) return;
+  try {
+    await botInstance.api.sendMessage(tgId, text, opts?.markdown ? { parse_mode: "Markdown" } : undefined);
+  } catch (err: any) {
+    // 403 = user blocked the bot, 400 = invalid chat — both non-fatal
+    const code = err?.error_code;
+    if (code !== 403 && code !== 400) {
+      console.warn("[bot] notifyUser failed", tgId, err?.description ?? err?.message);
+    }
+  }
 }
 
 export function startBot() {
@@ -20,6 +38,7 @@ export function startBot() {
     return;
   }
   const bot = new Bot(config.BOT_TOKEN);
+  botInstance = bot;
 
   const openKb = () =>
     new InlineKeyboard().webApp("Open Casino", config.PUBLIC_WEB_URL);

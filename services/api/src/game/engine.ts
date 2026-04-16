@@ -24,6 +24,7 @@ import {
 } from "../db/repo/rounds.js";
 import { ensureHouseUser, getHouseUserId, getUserById } from "../db/repo/users.js";
 import { generateServerSeed, sha256Hex } from "./fair.js";
+import { notifyUser } from "../bot.js";
 
 const BET_LOCK_BUFFER_MS = 2000;
 
@@ -295,6 +296,19 @@ export class GameEngine extends EventEmitter {
         restingY: result.resting.y,
       });
     });
+
+    // DM the winner
+    const winUser = getUserById(winner.userId);
+    if (winUser) {
+      const NANO = 1_000_000_000n;
+      const w = winnerPayoutNano / NANO;
+      const f = (winnerPayoutNano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+      const amountTon = f ? `${w}.${f}` : `${w}`;
+      notifyUser(
+        winUser.tg_id,
+        `You won round #${roundId} — +${amountTon} TON`,
+      ).catch(() => {});
+    }
 
     // Push updated balances to all players in this round.
     for (const b of bets) {

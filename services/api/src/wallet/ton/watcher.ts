@@ -5,10 +5,18 @@ import { depositExists, getCursor, insertDeposit, setCursor } from "../../db/rep
 import { getUserByMemo } from "../../db/repo/users.js";
 import { getAdapter } from "../registry.js";
 import { pushBalance } from "../../ws/gateway.js";
+import { notifyUser } from "../../bot.js";
 
 let running = false;
 let timer: NodeJS.Timeout | null = null;
 const POLL_MS = 6000;
+
+const NANO = 1_000_000_000n;
+function fmtTonAmount(nano: bigint): string {
+  const w = nano / NANO;
+  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+  return f ? `${w}.${f}` : `${w}`;
+}
 
 export function startTonWatcher() {
   if (running || !config.HOT_WALLET_MNEMONIC) {
@@ -66,12 +74,21 @@ async function pollOnce() {
       });
     });
     // Push fresh balance to the user's connected sockets so their UI updates live.
+    const newBal = getBalanceNano(user.id);
     try {
-      pushBalance(user.id, getBalanceNano(user.id));
+      pushBalance(user.id, newBal);
     } catch (err) {
       console.warn("[ton-watcher] pushBalance failed", err);
     }
     console.log(`[ton-watcher] credited ${c.amountNano} nano to ${user.id} (memo=${c.memo})`);
+
+    // DM the user
+    const amountTon = fmtTonAmount(c.amountNano);
+    const balTon = fmtTonAmount(newBal);
+    notifyUser(
+      user.tg_id,
+      `Deposit received: +${amountTon} TON\nBalance: ${balTon} TON`,
+    ).catch(() => {});
   }
 
   if (nextCursor) setCursor("ton", nextCursor);
