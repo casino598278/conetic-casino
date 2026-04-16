@@ -25,12 +25,22 @@ function generateAnonName(): string {
 }
 
 export function setAnonMode(userId: string, enabled: boolean): UserRow {
-  const anonName = enabled ? generateAnonName() : null;
-  db.prepare("UPDATE users SET anon_mode = ?, anon_name = ? WHERE id = ?").run(
-    enabled ? 1 : 0,
-    anonName,
-    userId,
-  );
+  if (enabled) {
+    // Only generate a name if the user doesn't already have one.
+    // Once assigned, the anon name is permanent.
+    const existing = getUserById(userId);
+    if (existing?.anon_name) {
+      db.prepare("UPDATE users SET anon_mode = 1 WHERE id = ?").run(userId);
+    } else {
+      db.prepare("UPDATE users SET anon_mode = 1, anon_name = ? WHERE id = ?").run(
+        generateAnonName(),
+        userId,
+      );
+    }
+  } else {
+    // Turn off anon mode but KEEP the name for next time.
+    db.prepare("UPDATE users SET anon_mode = 0 WHERE id = ?").run(userId);
+  }
   return getUserById(userId)!;
 }
 
