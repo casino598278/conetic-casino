@@ -147,11 +147,16 @@ export default function App() {
     return () => clearTimeout(t);
   }, [lastResult]);
 
+  // Block access outside Telegram Mini App — show blank white page.
+  const isTelegram = !!window.Telegram?.WebApp?.initData;
+  if (!isTelegram && !new URLSearchParams(window.location.search).has("devUser")) {
+    return <div style={{ background: "#fff", height: "100vh", width: "100vw" }} />;
+  }
+
   if (authError) {
     return (
       <div className="app">
         <div className="empty" style={{ padding: 32 }}>
-          <h2>Conetic Casino</h2>
           <p>{authError}</p>
         </div>
       </div>
