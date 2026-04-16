@@ -121,7 +121,8 @@ export default function App() {
   }, []);
 
   const countdown = useCountdown(snapshot?.countdownEndsAt ?? null);
-  const isLive = !!liveSeed && snapshot?.phase === "LIVE";
+  // isLive if EITHER the snapshot says LIVE or we have a trajectory seed (race-safe).
+  const isLive = !!liveSeed || snapshot?.phase === "LIVE";
   const phase = snapshot?.phase ?? "WAITING";
   const canBet = phase === "WAITING" || phase === "COUNTDOWN";
   const pot = snapshot?.potNano ?? "0";

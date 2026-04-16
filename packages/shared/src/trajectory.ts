@@ -75,6 +75,13 @@ export function simulateTrajectory(seedHex: string): TrajectoryResult {
   const d = deriveFromSeed(seedHex);
   const steps: TrajectoryStep[] = [];
 
+  // Derive random spawn point — reversed seed bytes give an independent PRNG stream.
+  const revBuf = new Uint8Array(hexToBuf(seedHex));
+  revBuf.reverse();
+  const spawnRng = new Xoshiro256ss(revBuf);
+  const spawnX = spawnRng.range(-HALF * 0.5, HALF * 0.5);
+  const spawnY = spawnRng.range(-HALF * 0.5, HALF * 0.5);
+
   // --- SPIN phase ---
   let angle = d.spinAngle0;
   let omega = d.spinOmega0;
@@ -86,16 +93,17 @@ export function simulateTrajectory(seedHex: string): TrajectoryResult {
     angle += omega * DT;
     omega *= spinDecay;
     elapsedMs += ARENA.SIM_DT_MS;
-    steps.push({ phase: "spin", x: 0, y: 0, angle, t: elapsedMs });
+    steps.push({ phase: "spin", x: spawnX, y: spawnY, angle, t: elapsedMs });
     i++;
   }
 
   // --- SHOOT phase ---
+  // Ball launches from the same spawn position.
   const launchAngle = angle;
   let vx = Math.cos(launchAngle) * d.shootSpeed;
   let vy = Math.sin(launchAngle) * d.shootSpeed;
-  let x = 0;
-  let y = 0;
+  let x = spawnX;
+  let y = spawnY;
   const shootDecay = Math.exp(Math.log(SHOOT_DAMPING) * DT);
 
   while (i < MAX_STEPS) {

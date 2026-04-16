@@ -192,11 +192,20 @@ export function ArenaCanvas({ snapshot, trajectorySeed, liveStartedAt, result, c
         st.wedgeContainer.addChild(g);
       }
 
-      // Pass 2: avatars (larger now — focus of UI)
-      for (const w of wedges) {
+      // Pass 2: avatars — corner players first, dominant last (so dominant bg is behind).
+      // If there are corner players, skip initials for the dominant (color is enough;
+      // photo will fill when loaded). This prevents big "CO" overlapping small "P".
+      const hasCorners = corners.length > 0;
+      for (const w of corners) {
         const player = players.find((p) => p.userId === w.userId);
         if (!player) continue;
-        placeAvatar(st, w, player, myEpoch).catch(() => {});
+        placeAvatar(st, w, player, myEpoch, false).catch(() => {});
+      }
+      if (dominant) {
+        const player = players.find((p) => p.userId === dominant.userId);
+        if (player) {
+          placeAvatar(st, dominant, player, myEpoch, hasCorners).catch(() => {});
+        }
       }
 
       // Pass 3: centre ball + pointer (created if missing, persistent across snapshots)
@@ -416,6 +425,7 @@ async function placeAvatar(
   wedge: Wedge,
   player: { firstName: string; photoUrl: string | null; username: string | null },
   epoch: number,
+  skipInitials = false,
 ) {
   if (epoch !== st.renderEpoch) return;
 
@@ -435,21 +445,24 @@ async function placeAvatar(
   const cx = wedge.centroid.x * PIX_PER_UNIT;
   const cy = wedge.centroid.y * PIX_PER_UNIT;
 
-  // Initials fallback — always add, hide if photo loads.
-  const initials = (player.firstName ?? "?").slice(0, 2).toUpperCase();
-  const fontSize = Math.max(14, Math.min(boxW, boxH) * 0.35);
-  const text = new Text({
-    text: initials,
-    style: {
-      fontSize,
-      fontWeight: "800",
-      fill: 0xffffff,
-      align: "center",
-    },
-  });
-  text.anchor.set(0.5);
-  text.position.set(cx, cy);
-  container.addChild(text);
+  // Initials fallback — skip for dominant when corners exist (prevents overlap).
+  let text: Text | null = null;
+  if (!skipInitials) {
+    const initials = (player.firstName ?? "?").slice(0, 2).toUpperCase();
+    const fontSize = Math.max(14, Math.min(boxW, boxH) * 0.35);
+    text = new Text({
+      text: initials,
+      style: {
+        fontSize,
+        fontWeight: "800",
+        fill: 0xffffff,
+        align: "center",
+      },
+    });
+    text.anchor.set(0.5);
+    text.position.set(cx, cy);
+    container.addChild(text);
+  }
 
   if (epoch === st.renderEpoch) st.avatarContainer.addChild(container);
 
@@ -473,18 +486,29 @@ async function placeAvatar(
       container.addChild(mask);
       sprite.mask = mask;
       container.addChild(sprite);
-      text.visible = false;
+      if (text) text.visible = false;
     } catch (err) {
       console.warn("[arena] avatar load failed for", player.photoUrl, err);
     }
   }
 }
 
-function loadImageBitmap(src: string): Promise<HTMLImageElement> {
+/** Load an image (including SVG) and rasterize to a canvas so Pixi can texture it. */
+function loadImageBitmap(src: string): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
+    img.onload = () => {
+      // Rasterize to canvas (handles SVGs that Pixi can't texture directly).
+      const size = 256;
+      const c = document.createElement("canvas");
+      c.width = size;
+      c.height = size;
+      const ctx = c.getContext("2d");
+      if (!ctx) { reject(new Error("no 2d ctx")); return; }
+      ctx.drawImage(img, 0, 0, size, size);
+      resolve(c);
+    };
     img.onerror = (e) => reject(e);
     img.src = src;
   });
