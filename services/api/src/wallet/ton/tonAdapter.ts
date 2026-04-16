@@ -56,7 +56,7 @@ export class TonAdapter implements ChainAdapter {
       });
     }
 
-    const nextCursor = newest ? `${newest.lt}:${newest.hash}` : (cursor ?? "");
+    const nextCursor = newest ? `${newest.lt}:${newest.hash}` : (_cursor ?? "");
     return { nextCursor, credits };
   }
 
