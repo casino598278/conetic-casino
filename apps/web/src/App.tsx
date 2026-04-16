@@ -6,6 +6,7 @@ import { WalletSheet } from "./ui/WalletSheet";
 import { WinScreen } from "./ui/WinScreen";
 import { GamePills } from "./ui/GamePills";
 import { HistoryModal } from "./ui/HistoryModal";
+import { Leaderboard } from "./ui/Leaderboard";
 import { useLobbyStore } from "./state/lobbyStore";
 import { useWalletStore } from "./state/walletStore";
 import { api, login } from "./net/api";
@@ -52,6 +53,7 @@ export default function App() {
 
   const [showWallet, setShowWallet] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -225,11 +227,13 @@ export default function App() {
 
       <div className="tabs">
         <button className="active">Arena</button>
+        <button onClick={() => setShowLeaderboard(true)}>Leaderboard</button>
         <button onClick={() => setShowWallet(true)}>Wallet</button>
       </div>
 
       {showWallet && <WalletSheet onClose={() => setShowWallet(false)} />}
       {showHistory && <HistoryModal onClose={() => setShowHistory(false)} />}
+      {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
 
       {winScreenVisible && lastResult && snapshot && (() => {
         const winnerPlayer = snapshot.players.find((p) => p.userId === lastResult.winnerUserId);

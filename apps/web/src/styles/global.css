@@ -946,6 +946,55 @@ input, textarea { font-family: inherit; }
   100% { transform: translateY(110vh) rotate(720deg); opacity: .85; }
 }
 
+/* Leaderboard */
+.lb-list { display: flex; flex-direction: column; gap: 6px; }
+.lb-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--s1);
+  border: 1px solid var(--b1);
+  border-radius: 12px;
+}
+.lb-rank {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--blue);
+  min-width: 32px;
+  text-align: center;
+}
+.lb-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--s3);
+  border: 1px solid var(--b2);
+  overflow: hidden;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.lb-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.lb-avatar span { font-size: 11px; font-weight: 700; color: var(--t2); }
+.lb-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lb-amount {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
 /* Connection status dot */
 .ws-disconnected {
   width: 8px;

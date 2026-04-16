@@ -8,8 +8,46 @@ export interface UserRow {
   photo_url: string | null;
   memo: string;
   is_house: number;
+  anon_mode: number;
+  anon_name: string | null;
   created_at: number;
   last_seen_at: number;
+}
+
+const ANON_ADJECTIVES = ["Swift","Lucky","Shadow","Wild","Dark","Brave","Gold","Steel","Iron","Neon"];
+const ANON_NOUNS = ["Wolf","Fox","Bear","Eagle","Shark","Tiger","Falcon","Cobra","Phoenix","Raven"];
+
+function generateAnonName(): string {
+  const adj = ANON_ADJECTIVES[Math.floor(Math.random() * ANON_ADJECTIVES.length)]!;
+  const noun = ANON_NOUNS[Math.floor(Math.random() * ANON_NOUNS.length)]!;
+  const num = Math.floor(Math.random() * 100);
+  return `${adj}${noun}${num}`;
+}
+
+export function setAnonMode(userId: string, enabled: boolean): UserRow {
+  const anonName = enabled ? generateAnonName() : null;
+  db.prepare("UPDATE users SET anon_mode = ?, anon_name = ? WHERE id = ?").run(
+    enabled ? 1 : 0,
+    anonName,
+    userId,
+  );
+  return getUserById(userId)!;
+}
+
+/** Return display name + photo for a user, respecting anon mode. */
+export function getPublicIdentity(user: UserRow): {
+  username: string | null;
+  firstName: string;
+  photoUrl: string | null;
+} {
+  if (user.anon_mode && user.anon_name) {
+    return { username: null, firstName: user.anon_name, photoUrl: null };
+  }
+  return {
+    username: user.username,
+    firstName: user.first_name,
+    photoUrl: user.photo_url,
+  };
 }
 
 const HOUSE_ID = "house";

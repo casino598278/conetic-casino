@@ -22,7 +22,8 @@ import {
   type RoundRow,
   updateRoundPot,
 } from "../db/repo/rounds.js";
-import { ensureHouseUser, getHouseUserId, getUserById } from "../db/repo/users.js";
+import { ensureHouseUser, getHouseUserId, getUserById, getPublicIdentity } from "../db/repo/users.js";
+import { addWager } from "../db/repo/leaderboard.js";
 import { generateServerSeed, sha256Hex } from "./fair.js";
 import { notifyUser } from "../bot.js";
 
@@ -167,6 +168,9 @@ export class GameEngine extends EventEmitter {
       if (err instanceof InsufficientBalanceError) return { ok: false, error: "insufficient_balance" };
       throw err;
     }
+
+    // Track wager for monthly leaderboard.
+    addWager(input.userId, input.amountNano);
 
     // If we're in WAITING and this bet brings us to 2+ players, start the countdown.
     if (this.phase === "WAITING") {
@@ -425,12 +429,13 @@ export class GameEngine extends EventEmitter {
     const bets = getBetsForRound(round.id);
     return bets.map((b) => {
       const u = getUserById(b.user_id)!;
+      const pub = getPublicIdentity(u);
       return {
         userId: u.id,
         tgId: u.tg_id,
-        username: u.username,
-        firstName: u.first_name,
-        photoUrl: u.photo_url,
+        username: pub.username,
+        firstName: pub.firstName,
+        photoUrl: pub.photoUrl,
         stakeNano: b.amount_nano,
         clientSeedHex: b.client_seed_hex,
       };
