@@ -37,12 +37,14 @@ const ITEMS: Item[] = [
   },
   {
     key: "menu",
-    label: "Menu",
+    label: "Leaderboard",
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="3" y1="7" x2="21" y2="7" />
-        <line x1="3" y1="12" x2="21" y2="12" />
-        <line x1="3" y1="17" x2="21" y2="17" />
+        <path d="M8 21h8" />
+        <path d="M12 17v4" />
+        <path d="M7 4h10v6a5 5 0 0 1-10 0V4z" />
+        <path d="M7 6H4v2a3 3 0 0 0 3 3" />
+        <path d="M17 6h3v2a3 3 0 0 1-3 3" />
       </svg>
     ),
   },
