@@ -13,7 +13,7 @@ import { useMiningStore } from "./state/miningStore";
 import { useLobbyStore } from "./state/lobbyStore";
 import { useWalletStore } from "./state/walletStore";
 import { useNavStore } from "./state/navStore";
-import { api, login } from "./net/api";
+import { api, login, getToken, clearToken, ApiError } from "./net/api";
 import { getSocket } from "./net/socket";
 import { getInitData } from "./telegram/initWebApp";
 import { SERVER_EVENTS, type LobbySnapshot, type RoundResult } from "@conetic/shared";
@@ -121,14 +121,45 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const initData = getInitData();
-        if (!initData) {
-          setAuthError("Open this app from the Conetic Casino Telegram bot.");
-          return;
+        // Prefer the cached JWT so repeat opens don't re-auth unnecessarily.
+        // Only hit /auth/telegram if we have no token or the cached one is
+        // rejected with 401.
+        type MeShape = {
+          id: string;
+          tgId: number;
+          username: string | null;
+          firstName: string;
+          photoUrl: string | null;
+          balanceNano: string;
+        };
+        let me: MeShape | null = null;
+        if (getToken()) {
+          try {
+            me = await api<MeShape>("/me");
+          } catch (err) {
+            if (err instanceof ApiError && err.status === 401) {
+              clearToken();
+            } else {
+              throw err;
+            }
+          }
         }
-        const auth = await login(initData);
-        setUser(auth.user);
-        const me = await api<{ balanceNano: string }>("/me");
+        if (!me) {
+          const initData = getInitData();
+          if (!initData) {
+            setAuthError("Open this app from the Conetic Casino Telegram bot.");
+            return;
+          }
+          await login(initData);
+          me = await api<MeShape>("/me");
+        }
+        setUser({
+          id: me.id,
+          tgId: me.tgId,
+          username: me.username,
+          firstName: me.firstName,
+          photoUrl: me.photoUrl,
+        });
         setBalance(BigInt(me.balanceNano));
 
         const sock = getSocket();
