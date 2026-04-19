@@ -1815,6 +1815,33 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 .dice-stat-flip:hover { color: var(--c-accent); border-color: var(--c-accent); }
 
+/* Editable stat value — looks identical to .dice-stat-val but accepts typing. */
+.dice-stat-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+  width: 100%;
+  -moz-appearance: textfield;
+  appearance: textfield;
+  border-bottom: 1px dashed transparent;
+  transition: border-color var(--t-xs);
+}
+.dice-stat-input:hover { border-bottom-color: var(--c-border-2); }
+.dice-stat-input:focus { border-bottom-color: var(--c-accent); }
+.dice-stat-input::-webkit-outer-spin-button,
+.dice-stat-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+/* Inline variant sits next to the flip button in the Roll Over/Under card. */
+.dice-stat-input-inline { flex: 1; min-width: 0; }
+
 /* ---------- Limbo stage ---------- */
 .limbo-stage {
   flex-direction: column;

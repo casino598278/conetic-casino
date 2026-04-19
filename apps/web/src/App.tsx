@@ -194,7 +194,7 @@ export default function App() {
   // Bottom-nav tabs that open sheets snap the tab back to Browse so the sheet
   // can reopen on the next tap.
   useEffect(() => {
-    if (tab === "bets" || tab === "recent") {
+    if (tab === "bets") {
       setShowHistory(true);
       setTab("browse");
     } else if (tab === "menu") {
@@ -241,10 +241,6 @@ export default function App() {
   }
 
   const renderGame = () => {
-    if (tab === "favourites") {
-      return <div className="stake-empty"><p>No favourites yet.</p></div>;
-    }
-
     if (!activeGame) return <BrowseHome />;
 
     if (activeGame === "dice") {

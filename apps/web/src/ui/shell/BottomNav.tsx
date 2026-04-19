@@ -25,25 +25,6 @@ const ITEMS: Item[] = [
     ),
   },
   {
-    key: "favourites",
-    label: "Favourites",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 21s-7-4.35-7-10a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 19 11c0 5.65-7 10-7 10z" />
-      </svg>
-    ),
-  },
-  {
-    key: "recent",
-    label: "Recent",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="9" />
-        <polyline points="12 7 12 12 16 14" />
-      </svg>
-    ),
-  },
-  {
     key: "bets",
     label: "My Bets",
     icon: (

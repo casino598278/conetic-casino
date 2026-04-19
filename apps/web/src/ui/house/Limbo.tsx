@@ -161,7 +161,6 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
     const doubled = tonToNano(parseFloat(amount) || 0) * 2n;
     setAmountNano(doubled > balance ? balance : doubled);
   };
-  const maxBet = () => setAmountNano(balance);
 
   const displayMultStr =
     display >= 100 ? display.toFixed(2)
@@ -267,7 +266,6 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
             <span className="sg-input-suffix">TON</span>
             <button className="sg-input-btn" onClick={half} type="button">½</button>
             <button className="sg-input-btn" onClick={double} type="button">2×</button>
-            <button className="sg-input-btn" onClick={maxBet} type="button">Max</button>
           </div>
         </div>
 

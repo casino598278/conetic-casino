@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type ShellTab = "browse" | "favourites" | "recent" | "bets" | "menu";
+export type ShellTab = "browse" | "bets" | "menu";
 export type BrowseCategory = "originals" | "multiplayer";
 export type GameKey = "arena" | "mining" | "dice" | "limbo" | null;
 

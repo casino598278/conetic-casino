@@ -4,6 +4,7 @@ import {
   DICE_MAX_TARGET,
   diceMultiplier,
   diceWinChance,
+  HOUSE_RTP,
 } from "@conetic/shared";
 import { api, ApiError } from "../../net/api";
 import { haptic, notify } from "../../telegram/initWebApp";
@@ -22,7 +23,6 @@ function tonToNano(ton: number): bigint {
   const [whole, frac = ""] = s.split(".");
   return BigInt(whole!) * NANO + BigInt(frac.padEnd(9, "0").slice(0, 9));
 }
-
 function nanoToTonDisplay(nano: bigint): string {
   const w = nano / NANO;
   const f = (nano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
@@ -47,6 +47,14 @@ interface Props {
   onOpenFairness: () => void;
 }
 
+function clampTarget(t: number): number {
+  if (!Number.isFinite(t)) return DICE_MIN_TARGET;
+  return Math.max(DICE_MIN_TARGET, Math.min(DICE_MAX_TARGET, t));
+}
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 export function Dice({ onBack, onError, onOpenFairness }: Props) {
   const balance = useWalletStore((s) => s.balanceNano);
   const setBalance = useWalletStore((s) => s.setBalance);
@@ -58,16 +66,36 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
   const [roll, setRoll] = useState<number | null>(null);
   const [win, setWin] = useState<boolean | null>(null);
   const [lastPayout, setLastPayout] = useState<string | null>(null);
-  // Position of the "landing marker" on the track, 0..100. null = hidden.
   const [markerPos, setMarkerPos] = useState<number | null>(null);
   const [markerWin, setMarkerWin] = useState<boolean | null>(null);
   const animRef = useRef<number | null>(null);
+
+  // Local editable buffers for the three stat fields so a partial edit like
+  // "2." doesn't fight the number state. Synced from `target`/`over` on blur.
+  const [multStr, setMultStr] = useState("");
+  const [chanceStr, setChanceStr] = useState("");
+  const [targetStr, setTargetStr] = useState("");
 
   const chance = diceWinChance({ target, over });
   const mult = diceMultiplier({ target, over });
   const profitTon = (parseFloat(amount) || 0) * (mult - 1);
 
+  // Keep the buffers in sync whenever `target`/`over` change via the slider.
+  useEffect(() => {
+    setMultStr(mult.toFixed(4));
+    setChanceStr((chance * 100).toFixed(2));
+    setTargetStr(target.toFixed(2));
+  }, [target, over]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
+
+  const clearMarker = () => {
+    if (markerPos != null) {
+      setMarkerPos(null);
+      setMarkerWin(null);
+      setWin(null);
+    }
+  };
 
   const play = async () => {
     const ton = parseFloat(amount);
@@ -113,9 +141,6 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
     return "Bet failed. Check your connection.";
   }
 
-  // Dice result is instant — no spin / count-up. The marker appears directly
-  // at the landing position and pops in via a 300 ms CSS transform on mount.
-  // (Slow count animation is Limbo's thing; Dice should feel like a real die.)
   const animateRoll = (finalRoll: number, finalWin: boolean) => {
     if (animRef.current) cancelAnimationFrame(animRef.current);
     animRef.current = null;
@@ -127,36 +152,62 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
   };
 
   const onSlider = (v: number) => {
-    const clamped = Math.max(DICE_MIN_TARGET, Math.min(DICE_MAX_TARGET, v));
-    setTarget(Math.round(clamped * 100) / 100);
-    // Moving the slider between rolls clears the previous marker so the
-    // track reads cleanly for the next bet.
-    if (!busy && markerPos != null) {
-      setMarkerPos(null);
-      setMarkerWin(null);
-      setWin(null);
-    }
+    setTarget(round2(clampTarget(v)));
+    if (!busy) clearMarker();
   };
 
-  const flipSide = () => setOver((v) => !v);
+  // Flip preserves the effective win chance: Over 50.5 swaps to Under 49.5,
+  // so multiplier and win-chance stay the same — only the winning side flips.
+  const flipSide = () => {
+    const newOver = !over;
+    const newTarget = round2(clampTarget(DICE_MAX_TARGET + DICE_MIN_TARGET - target));
+    setOver(newOver);
+    setTarget(newTarget);
+    if (!busy) clearMarker();
+  };
+
+  // Commit an edited multiplier: invert the formula to find the target that
+  // yields that multiplier on the current side.
+  const commitMult = () => {
+    const m = parseFloat(multStr);
+    if (!Number.isFinite(m) || m <= 1) { setMultStr(mult.toFixed(4)); return; }
+    const newChance = HOUSE_RTP / m;
+    const pct = Math.max(0, Math.min(1, newChance)) * 100;
+    const newTarget = over ? DICE_MAX_TARGET + DICE_MIN_TARGET - pct : pct;
+    setTarget(round2(clampTarget(newTarget)));
+    if (!busy) clearMarker();
+  };
+
+  // Commit an edited win-chance (in %): invert back to target.
+  const commitChance = () => {
+    const pct = parseFloat(chanceStr);
+    if (!Number.isFinite(pct) || pct <= 0 || pct >= 100) {
+      setChanceStr((chance * 100).toFixed(2));
+      return;
+    }
+    const newTarget = over ? DICE_MAX_TARGET + DICE_MIN_TARGET - pct : pct;
+    setTarget(round2(clampTarget(newTarget)));
+    if (!busy) clearMarker();
+  };
+
+  // Commit an edited target: just clamp and set.
+  const commitTarget = () => {
+    const t = parseFloat(targetStr);
+    if (!Number.isFinite(t)) { setTargetStr(target.toFixed(2)); return; }
+    setTarget(round2(clampTarget(t)));
+    if (!busy) clearMarker();
+  };
+
   const setAmountNano = (nano: bigint) => {
     if (nano <= 0n) { setAmount("0"); return; }
     setAmount(nanoToTonDisplay(nano));
   };
-  const half = () => {
-    const cur = tonToNano(parseFloat(amount) || 0);
-    setAmountNano(cur / 2n);
-  };
-  // 2× doubles — but clamps to the current balance so a user with 3.39 TON
-  // who has 2 typed can't jump to an un-placeable 4.
+  const half = () => setAmountNano(tonToNano(parseFloat(amount) || 0) / 2n);
   const double = () => {
-    const cur = tonToNano(parseFloat(amount) || 0);
-    const doubled = cur * 2n;
+    const doubled = tonToNano(parseFloat(amount) || 0) * 2n;
     setAmountNano(doubled > balance ? balance : doubled);
   };
-  const maxBet = () => setAmountNano(balance);
 
-  // Slider visuals: fill covers the winning range, pin sits at the target.
   const targetPct = ((target - DICE_MIN_TARGET) / (DICE_MAX_TARGET - DICE_MIN_TARGET)) * 100;
   const fillStyle = over
     ? { left: `${targetPct}%`, right: "0%" }
@@ -183,18 +234,10 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
       </div>
 
       <div className="sg-stage dice-stage">
-        <div
-          className={`dice-stage-roll ${
-            win === true ? "is-win" : win === false ? "is-loss" : ""
-          }`}
-        >
+        <div className={`dice-stage-roll ${win === true ? "is-win" : win === false ? "is-loss" : ""}`}>
           {roll == null ? "0.00" : roll.toFixed(2)}
         </div>
-        <div
-          className={`dice-stage-sub ${
-            win === true ? "is-win" : win === false ? "is-loss" : ""
-          }`}
-        >
+        <div className={`dice-stage-sub ${win === true ? "is-win" : win === false ? "is-loss" : ""}`}>
           {win === true && lastPayout
             ? `+${fmtTon(BigInt(lastPayout) - tonToNano(parseFloat(amount) || 0))} TON`
             : win === false
@@ -210,9 +253,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
             <div className="dice-slider-pin" style={{ left: `${targetPct}%` }} />
             {markerPos != null && (
               <div
-                className={`dice-roll-marker ${
-                  markerWin === true ? "is-win" : markerWin === false ? "is-loss" : ""
-                }`}
+                className={`dice-roll-marker ${markerWin === true ? "is-win" : markerWin === false ? "is-loss" : ""}`}
                 style={{ left: `${markerPos}%` }}
               >
                 <span className="dice-roll-marker-bubble">
@@ -239,12 +280,33 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
         <div className="dice-stats">
           <div className="dice-stat-card">
             <div className="dice-stat-lbl">Multiplier</div>
-            <div className="dice-stat-val">{mult.toFixed(4)}×</div>
+            <input
+              className="dice-stat-input"
+              type="number"
+              inputMode="decimal"
+              step="0.0001"
+              min="1.0001"
+              value={multStr}
+              onChange={(e) => setMultStr(e.target.value)}
+              onBlur={commitMult}
+              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+            />
           </div>
           <div className="dice-stat-card">
             <div className="dice-stat-lbl">Roll {over ? "Over" : "Under"}</div>
             <div className="dice-stat-val">
-              <span>{target.toFixed(2)}</span>
+              <input
+                className="dice-stat-input dice-stat-input-inline"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min={DICE_MIN_TARGET}
+                max={DICE_MAX_TARGET}
+                value={targetStr}
+                onChange={(e) => setTargetStr(e.target.value)}
+                onBlur={commitTarget}
+                onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+              />
               <button className="dice-stat-flip" onClick={flipSide} type="button" aria-label="Flip side">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="17 1 21 5 17 9" />
@@ -257,7 +319,18 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
           </div>
           <div className="dice-stat-card">
             <div className="dice-stat-lbl">Win chance</div>
-            <div className="dice-stat-val">{(chance * 100).toFixed(2)}%</div>
+            <input
+              className="dice-stat-input"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0.01"
+              max="99.99"
+              value={chanceStr}
+              onChange={(e) => setChanceStr(e.target.value)}
+              onBlur={commitChance}
+              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+            />
           </div>
         </div>
 
@@ -281,7 +354,6 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
             <span className="sg-input-suffix">TON</span>
             <button className="sg-input-btn" onClick={half} type="button">½</button>
             <button className="sg-input-btn" onClick={double} type="button">2×</button>
-            <button className="sg-input-btn" onClick={maxBet} type="button">Max</button>
           </div>
         </div>
 

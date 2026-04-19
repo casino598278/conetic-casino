@@ -21,7 +21,10 @@ const Schema = z.object({
   RAKE_BPS: z.coerce.number().default(50),
   COUNTDOWN_SECONDS: z.coerce.number().default(30),
   MIN_BET_TON: z.coerce.number().default(0.1),
-  MAX_BET_TON: z.coerce.number().default(100),
+  // Effectively unlimited. MAX_WIN_TON still caps profit per bet so the
+  // house is protected; MAX_BET_TON is only a sanity guard against
+  // accidental integer-overflow bets.
+  MAX_BET_TON: z.coerce.number().default(1_000_000),
   MAX_DAILY_WITHDRAW_TON: z.coerce.number().default(500),
   WITHDRAW_COOLDOWN_SECONDS: z.coerce.number().default(60),
 
