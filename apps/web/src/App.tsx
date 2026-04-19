@@ -1,13 +1,10 @@
-import { useEffect, useState } from "react";
-import { ArenaCanvas } from "./arena/ArenaCanvas";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { BetBar } from "./ui/BetBar";
 import { PlayersList } from "./ui/PlayersList";
 import { WalletSheet } from "./ui/WalletSheet";
 import { WinScreen } from "./ui/WinScreen";
 import { HistoryModal } from "./ui/HistoryModal";
 import { Leaderboard } from "./ui/Leaderboard";
-import { MiningGame } from "./ui/MiningGame";
-import { Dice } from "./ui/house/Dice";
 import { FairnessDrawer } from "./ui/house/FairnessDrawer";
 import { AppShell } from "./ui/shell/AppShell";
 import { BrowseHome } from "./ui/shell/BrowseHome";
@@ -19,6 +16,21 @@ import { api, login } from "./net/api";
 import { getSocket } from "./net/socket";
 import { getInitData } from "./telegram/initWebApp";
 import { SERVER_EVENTS, type LobbySnapshot, type RoundResult } from "@conetic/shared";
+
+// Heavy game screens are code-split — they only load when the user opens one.
+// This keeps the initial bundle under ~300KB gzip on first load.
+const ArenaCanvas = lazy(() =>
+  import("./arena/ArenaCanvas").then((m) => ({ default: m.ArenaCanvas })),
+);
+const MiningGame = lazy(() =>
+  import("./ui/MiningGame").then((m) => ({ default: m.MiningGame })),
+);
+const Dice = lazy(() =>
+  import("./ui/house/Dice").then((m) => ({ default: m.Dice })),
+);
+const Limbo = lazy(() =>
+  import("./ui/house/Limbo").then((m) => ({ default: m.Limbo })),
+);
 
 const NANO = 1_000_000_000n;
 function fmtTon(nanoStr: string): string {
@@ -51,7 +63,6 @@ export default function App() {
   const clearLive = useLobbyStore((s) => s.clearLive);
 
   const user = useWalletStore((s) => s.user);
-  const balance = useWalletStore((s) => s.balanceNano);
   const setUser = useWalletStore((s) => s.setUser);
   const setBalance = useWalletStore((s) => s.setBalance);
 
@@ -73,12 +84,13 @@ export default function App() {
   const setMiningLive = useMiningStore((s) => s.setLive);
   const setMiningResult = useMiningStore((s) => s.setResult);
   const clearMiningLive = useMiningStore((s) => s.clearLive);
+
   const [authError, setAuthError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [, setWsConnected] = useState(false);
   const [winScreenVisible, setWinScreenVisible] = useState(false);
 
-  // Version watch — hard-reload if backend deployed a new build.
+  // Version watch — reload if backend deployed a new build.
   useEffect(() => {
     let initial: string | null = null;
     const check = async () => {
@@ -109,7 +121,7 @@ export default function App() {
       try {
         const initData = getInitData();
         if (!initData) {
-          setAuthError("No Telegram initData. Open via the bot or use ?devUser=1 in dev.");
+          setAuthError("Open this app from the Conetic Casino Telegram bot.");
           return;
         }
         const auth = await login(initData);
@@ -134,7 +146,6 @@ export default function App() {
         sock.on("balance:update", (b: { balanceNano: string }) => {
           setBalance(BigInt(b.balanceNano));
         });
-        // Mining game events
         sock.on(SERVER_EVENTS.MiningState, (s: any) => setMiningSnap(s));
         sock.on(SERVER_EVENTS.MiningCommit, () => clearMiningLive());
         sock.on(SERVER_EVENTS.MiningLive, (e: { trajectorySeedHex: string; startedAt: number }) =>
@@ -142,18 +153,15 @@ export default function App() {
         );
         sock.on(SERVER_EVENTS.MiningResult, (r: any) => setMiningResult(r));
       } catch (err: any) {
-        setAuthError(err.message ?? "auth failed");
+        setAuthError(err.message ?? "Authentication failed");
       }
     })();
   }, []);
 
-  // When bottom-nav tab changes to wallet/bets, open the matching sheet and
-  // bounce the tab back to "browse" so reopening the sheet works.
+  // Bottom-nav tabs that open sheets snap the tab back to Browse so the sheet
+  // can reopen on the next tap.
   useEffect(() => {
-    if (tab === "wallet") {
-      setShowWallet(true);
-      setTab("browse");
-    } else if (tab === "bets") {
+    if (tab === "bets" || tab === "recent") {
       setShowHistory(true);
       setTab("browse");
     } else if (tab === "menu") {
@@ -179,9 +187,7 @@ export default function App() {
       setWinScreenVisible(false);
       return;
     }
-    const t = setTimeout(() => {
-      setWinScreenVisible(true);
-    }, 1200);
+    const t = setTimeout(() => setWinScreenVisible(true), 1200);
     return () => clearTimeout(t);
   }, [lastResult]);
 
@@ -193,8 +199,8 @@ export default function App() {
 
   if (authError) {
     return (
-      <div className="app">
-        <div className="empty" style={{ padding: 32 }}>
+      <div className="stake-shell">
+        <div className="stake-empty" style={{ padding: 32 }}>
           <p>{authError}</p>
         </div>
       </div>
@@ -208,32 +214,43 @@ export default function App() {
 
     if (!activeGame) return <BrowseHome />;
 
-    const back = (
-      <button type="button" className="stake-game-back" onClick={closeGame}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-        Back
-      </button>
-    );
-
     if (activeGame === "dice") {
       return (
-        <>
-          {back}
+        <Suspense fallback={<div className="stake-empty">Loading…</div>}>
           <Dice
             onBack={closeGame}
             onError={showToast}
             onOpenFairness={() => setFairnessOpen(true)}
           />
-        </>
+        </Suspense>
+      );
+    }
+
+    if (activeGame === "limbo") {
+      return (
+        <Suspense fallback={<div className="stake-empty">Loading…</div>}>
+          <Limbo
+            onBack={closeGame}
+            onError={showToast}
+            onOpenFairness={() => setFairnessOpen(true)}
+          />
+        </Suspense>
       );
     }
 
     if (activeGame === "arena") {
       return (
         <>
-          {back}
+          <div className="sg-head">
+            <button className="stake-game-back" onClick={closeGame} type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back
+            </button>
+            <div className="sg-title">Arena</div>
+            <div style={{ width: 60 }} />
+          </div>
           <div className="pot-row">
             <div>Total <strong>{fmtTon(pot)}</strong></div>
             <div>
@@ -245,9 +262,7 @@ export default function App() {
                 <span className="live">Winner!</span>
               ) : (
                 <span className="waiting">
-                  {playersJoined < 2
-                    ? `Waiting for players (${playersJoined}/2)`
-                    : "Starting…"}
+                  {playersJoined < 2 ? `Waiting for players (${playersJoined}/2)` : "Starting…"}
                 </span>
               )}
             </div>
@@ -255,13 +270,15 @@ export default function App() {
 
           <div className="arena-wrap">
             <div className="arena">
-              <ArenaCanvas
-                snapshot={snapshot}
-                trajectorySeed={liveSeed}
-                liveStartedAt={liveStartedAt}
-                result={lastResult}
-                currentUserId={user?.id ?? null}
-              />
+              <Suspense fallback={<div style={{ color: "#b1bad3", padding: 16 }}>Loading…</div>}>
+                <ArenaCanvas
+                  snapshot={snapshot}
+                  trajectorySeed={liveSeed}
+                  liveStartedAt={liveStartedAt}
+                  result={lastResult}
+                  currentUserId={user?.id ?? null}
+                />
+              </Suspense>
             </div>
           </div>
 
@@ -275,15 +292,26 @@ export default function App() {
     if (activeGame === "mining") {
       return (
         <>
-          {back}
-          <MiningGame
-            snapshot={miningSnap}
-            trajectorySeed={miningSeed}
-            liveStartedAt={miningStartedAt}
-            result={miningResult}
-            currentUserId={user?.id ?? null}
-            onError={(m) => showToast(m)}
-          />
+          <div className="sg-head">
+            <button className="stake-game-back" onClick={closeGame} type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back
+            </button>
+            <div className="sg-title">Mining</div>
+            <div style={{ width: 60 }} />
+          </div>
+          <Suspense fallback={<div className="stake-empty">Loading…</div>}>
+            <MiningGame
+              snapshot={miningSnap}
+              trajectorySeed={miningSeed}
+              liveStartedAt={miningStartedAt}
+              result={miningResult}
+              currentUserId={user?.id ?? null}
+              onError={(m) => showToast(m)}
+            />
+          </Suspense>
         </>
       );
     }
@@ -295,7 +323,7 @@ export default function App() {
     <>
       <AppShell
         onOpenWallet={() => setShowWallet(true)}
-        onOpenHistory={() => setShowHistory(true)}
+        onOpenSearch={() => {/* search placeholder (PR 3) */}}
         onOpenMenu={() => setShowLeaderboard(true)}
       >
         {renderGame()}
@@ -311,12 +339,12 @@ export default function App() {
         const username = winnerPlayer?.username ? `@${winnerPlayer.username}` : winnerPlayer?.firstName ?? "Winner";
         const stake = winnerPlayer ? BigInt(winnerPlayer.stakeNano) : 0n;
         const payout = BigInt(lastResult.winnerPayoutNano);
-        const mult = stake > 0n ? Number(payout) / Number(stake) : 0;
+        const multi = stake > 0n ? Number(payout) / Number(stake) : 0;
         return (
           <WinScreen
             username={username}
             payoutNano={lastResult.winnerPayoutNano}
-            multiplier={mult}
+            multiplier={multi}
             photoUrl={winnerPlayer?.photoUrl ?? null}
             isMe={lastResult.winnerUserId === user?.id}
             onClose={() => setWinScreenVisible(false)}
@@ -325,9 +353,6 @@ export default function App() {
       })()}
 
       {toast && <div className="toast">{toast}</div>}
-
-      {/* balance used by hidden re-render trigger; silence unused warn in prod */}
-      <span style={{ display: "none" }}>{balance.toString()}</span>
     </>
   );
 }

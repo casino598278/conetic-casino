@@ -7,6 +7,12 @@ import {
   validateDiceParams,
   DICE_MIN_TARGET,
   DICE_MAX_TARGET,
+  playLimbo,
+  limboMultiplier,
+  limboWinChance,
+  validateLimboParams,
+  LIMBO_MIN_TARGET,
+  LIMBO_MAX_TARGET,
 } from "@conetic/shared";
 import { requireAuthHook } from "../auth/authPlugin.js";
 import { playHouseGame, publicSeedState, maxWinTon } from "../game/houseGameEngine.js";
@@ -24,6 +30,10 @@ const PlayBody = z.object({
 const DicePlayBody = PlayBody.extend({
   target: z.number().min(DICE_MIN_TARGET).max(DICE_MAX_TARGET),
   over: z.boolean(),
+});
+
+const LimboPlayBody = PlayBody.extend({
+  target: z.number().min(LIMBO_MIN_TARGET).max(LIMBO_MAX_TARGET),
 });
 
 const RotateBody = z.object({
@@ -102,6 +112,44 @@ export async function registerSingleRoutes(app: FastifyInstance) {
       validate: validateDiceParams,
       compute: async ({ serverSeedHex, clientSeedHex, nonce, params: p }) => {
         const outcome = await playDice(serverSeedHex, clientSeedHex, nonce, p);
+        return {
+          outcome,
+          multiplier: outcome.win ? mult : 0,
+          maxMultiplier: mult,
+        };
+      },
+    });
+    if (!result.ok) return reply.code(409).send({ error: result.error, meta: result.meta });
+    return reply.send({
+      ok: true,
+      outcome: result.outcome,
+      multiplier: result.multiplier,
+      winChance: chance,
+      betNano: result.betNano,
+      payoutNano: result.payoutNano,
+      newBalanceNano: result.newBalanceNano,
+      nonce: result.nonce,
+      serverSeedHash: result.serverSeedHash,
+      clientSeedHex: result.clientSeedHex,
+      playId: result.playId,
+    });
+  });
+
+  app.post("/single/limbo/play", { preHandler: requireAuthHook }, async (req, reply) => {
+    if (!req.user) return reply.code(401).send({ error: "unauthenticated" });
+    const parsed = LimboPlayBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "bad request" });
+    const params = { target: parsed.data.target };
+    const mult = limboMultiplier(params);
+    const chance = limboWinChance(params);
+    const result = await playHouseGame({
+      userId: req.user.sub,
+      game: "limbo",
+      betNano: BigInt(parsed.data.amountNano),
+      params,
+      validate: validateLimboParams,
+      compute: async ({ serverSeedHex, clientSeedHex, nonce, params: p }) => {
+        const outcome = await playLimbo(serverSeedHex, clientSeedHex, nonce, p);
         return {
           outcome,
           multiplier: outcome.win ? mult : 0,

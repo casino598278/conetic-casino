@@ -6,11 +6,11 @@ import { useNavStore } from "../../state/navStore";
 interface Props {
   children: ReactNode;
   onOpenWallet: () => void;
-  onOpenHistory: () => void;
+  onOpenSearch: () => void;
   onOpenMenu: () => void;
 }
 
-export function AppShell({ children, onOpenWallet, onOpenHistory, onOpenMenu }: Props) {
+export function AppShell({ children, onOpenWallet, onOpenSearch, onOpenMenu }: Props) {
   const tab = useNavStore((s) => s.tab);
   const setTab = useNavStore((s) => s.setTab);
 
@@ -18,7 +18,7 @@ export function AppShell({ children, onOpenWallet, onOpenHistory, onOpenMenu }: 
     <div className="stake-shell">
       <TopBar
         onOpenWallet={onOpenWallet}
-        onOpenHistory={onOpenHistory}
+        onOpenSearch={onOpenSearch}
         onOpenMenu={onOpenMenu}
       />
       <main className="stake-shell-main">{children}</main>

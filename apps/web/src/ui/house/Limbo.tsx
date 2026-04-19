@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  DICE_MIN_TARGET,
-  DICE_MAX_TARGET,
-  diceMultiplier,
-  diceWinChance,
+  LIMBO_MIN_TARGET,
+  LIMBO_MAX_TARGET,
+  limboMultiplier,
+  limboWinChance,
 } from "@conetic/shared";
 import { api } from "../../net/api";
 import { haptic, notify } from "../../telegram/initWebApp";
 import { useWalletStore } from "../../state/walletStore";
 
 const NANO = 1_000_000_000n;
+const HISTORY_MAX = 10;
 
 function fmtTon(nano: bigint): string {
   const w = nano / NANO;
@@ -25,14 +26,16 @@ function tonToNano(ton: number): bigint {
 
 interface PlayResult {
   ok: true;
-  outcome: { roll: number; win: boolean };
+  outcome: { result: number; win: boolean };
   multiplier: number;
   winChance: number;
-  betNano: string;
   payoutNano: string;
   newBalanceNano: string;
-  nonce: number;
-  playId: number;
+}
+
+interface HistoryItem {
+  result: number;
+  win: boolean;
 }
 
 interface Props {
@@ -41,24 +44,39 @@ interface Props {
   onOpenFairness: () => void;
 }
 
-export function Dice({ onBack, onError, onOpenFairness }: Props) {
+export function Limbo({ onBack, onError, onOpenFairness }: Props) {
   const balance = useWalletStore((s) => s.balanceNano);
   const setBalance = useWalletStore((s) => s.setBalance);
 
-  const [target, setTarget] = useState(50.5);
-  const [over, setOver] = useState(true);
+  const [target, setTarget] = useState(2);
+  const [targetStr, setTargetStr] = useState("2.00");
   const [amount, setAmount] = useState("1");
   const [busy, setBusy] = useState(false);
-  const [roll, setRoll] = useState<number | null>(null);
-  const [win, setWin] = useState<boolean | null>(null);
+  const [display, setDisplay] = useState(1.0);
+  const [settled, setSettled] = useState<{ result: number; win: boolean } | null>(null);
   const [lastPayout, setLastPayout] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const animRef = useRef<number | null>(null);
 
-  const chance = diceWinChance({ target, over });
-  const mult = diceMultiplier({ target, over });
+  const chance = limboWinChance({ target });
+  const mult = limboMultiplier({ target });
   const profit = (parseFloat(amount) || 0) * (mult - 1);
 
   useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
+
+  // Keep target (number) in sync when user types.
+  const onTargetChange = (v: string) => {
+    setTargetStr(v);
+    const n = parseFloat(v);
+    if (Number.isFinite(n) && n >= LIMBO_MIN_TARGET && n <= LIMBO_MAX_TARGET) {
+      setTarget(n);
+    }
+  };
+  const onTargetBlur = () => {
+    const n = Math.max(LIMBO_MIN_TARGET, Math.min(LIMBO_MAX_TARGET, parseFloat(targetStr) || LIMBO_MIN_TARGET));
+    setTarget(n);
+    setTargetStr(n.toFixed(2));
+  };
 
   const play = async () => {
     const ton = parseFloat(amount);
@@ -67,16 +85,16 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
     if (nano > balance) { onError?.("Insufficient balance"); notify("error"); return; }
     if (busy) return;
     setBusy(true);
+    setSettled(null);
+    setLastPayout(null);
     haptic("light");
     try {
-      const r: PlayResult = await api("/single/dice/play", {
+      const r: PlayResult = await api("/single/limbo/play", {
         method: "POST",
-        body: JSON.stringify({ amountNano: nano.toString(), target, over }),
+        body: JSON.stringify({ amountNano: nano.toString(), target }),
       });
-      animateRoll(r.outcome.roll, r.outcome.win);
-      setLastPayout(r.payoutNano);
+      animate(r.outcome.result, r.outcome.win, r.payoutNano);
       setBalance(BigInt(r.newBalanceNano));
-      notify(r.outcome.win ? "success" : "warning");
     } catch (err: any) {
       notify("error");
       const msg = String(err?.message ?? "failed");
@@ -85,36 +103,38 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
       else if (msg.includes("max_win")) onError?.("Bet too high for this target");
       else if (msg.includes("daily_limit")) onError?.("Daily win limit reached");
       else onError?.(msg.slice(0, 60));
-    } finally {
       setBusy(false);
     }
   };
 
-  const animateRoll = (finalRoll: number, finalWin: boolean) => {
+  const animate = (finalResult: number, finalWin: boolean, payout: string) => {
     if (animRef.current) cancelAnimationFrame(animRef.current);
+    // Fast count-up to the crash result. Duration scales with result so
+    // huge multipliers take visibly longer — like Stake's Crash/Limbo.
+    const DUR = Math.min(1600, 600 + Math.log10(Math.max(1, finalResult)) * 260);
     const start = performance.now();
-    const DUR = 700;
+    const startVal = 1;
     const step = (t: number) => {
       const p = Math.min(1, (t - start) / DUR);
+      // Ease-out cubic
+      const eased = 1 - Math.pow(1 - p, 3);
+      const v = startVal + (finalResult - startVal) * eased;
+      setDisplay(v);
       if (p < 1) {
-        setRoll(Math.round(Math.random() * 9999) / 100);
-        setWin(null);
         animRef.current = requestAnimationFrame(step);
       } else {
-        setRoll(finalRoll);
-        setWin(finalWin);
+        setDisplay(finalResult);
+        setSettled({ result: finalResult, win: finalWin });
+        setLastPayout(payout);
+        setBusy(false);
+        setHistory((prev) => [{ result: finalResult, win: finalWin }, ...prev].slice(0, HISTORY_MAX));
+        notify(finalWin ? "success" : "warning");
         animRef.current = null;
       }
     };
     animRef.current = requestAnimationFrame(step);
   };
 
-  const onSlider = (v: number) => {
-    const clamped = Math.max(DICE_MIN_TARGET, Math.min(DICE_MAX_TARGET, v));
-    setTarget(Math.round(clamped * 100) / 100);
-  };
-
-  const flipSide = () => setOver((v) => !v);
   const half = () => {
     const v = Math.max(0, (parseFloat(amount) || 0) / 2);
     setAmount(v ? v.toFixed(4).replace(/\.?0+$/, "") : "0");
@@ -124,11 +144,21 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
     setAmount(v ? v.toFixed(4).replace(/\.?0+$/, "") : "0");
   };
 
-  // Slider visuals: fill covers the winning range, pin sits at the target.
-  const targetPct = ((target - DICE_MIN_TARGET) / (DICE_MAX_TARGET - DICE_MIN_TARGET)) * 100;
-  const fillStyle = over
-    ? { left: `${targetPct}%`, right: "0%" }
-    : { left: "0%", right: `${100 - targetPct}%` };
+  const displayMultStr =
+    display >= 100 ? display.toFixed(2)
+    : display >= 10 ? display.toFixed(2)
+    : display.toFixed(2);
+
+  const winClass = busy ? "" : settled?.win === true ? "is-win" : settled?.win === false ? "is-loss" : "";
+  const subClass = busy ? "" : winClass;
+
+  const subText = busy
+    ? "Rolling…"
+    : settled?.win && lastPayout
+      ? `+${fmtTon(BigInt(lastPayout) - tonToNano(parseFloat(amount) || 0))} TON`
+      : settled?.win === false
+        ? "Loss"
+        : "Place a bet";
 
   const betReady = !busy && (parseFloat(amount) || 0) > 0;
 
@@ -141,7 +171,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
           </svg>
           Back
         </button>
-        <div className="sg-title">Dice</div>
+        <div className="sg-title">Limbo</div>
         <button className="sg-head-btn" onClick={onOpenFairness} type="button" aria-label="Fairness">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z" />
@@ -150,70 +180,51 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
         </button>
       </div>
 
-      <div className="sg-stage dice-stage">
-        <div
-          className={`dice-stage-roll ${
-            win === true ? "is-win" : win === false ? "is-loss" : ""
-          }`}
-        >
-          {roll == null ? "0.00" : roll.toFixed(2)}
+      <div className="sg-stage limbo-stage">
+        <div className={`limbo-mult ${winClass}`}>
+          {displayMultStr}
+          <span className="limbo-mult-suffix">×</span>
         </div>
-        <div
-          className={`dice-stage-sub ${
-            win === true ? "is-win" : win === false ? "is-loss" : ""
-          }`}
-        >
-          {win === true && lastPayout
-            ? `+${fmtTon(BigInt(lastPayout) - tonToNano(parseFloat(amount) || 0))} TON`
-            : win === false
-              ? "Loss"
-              : "Place a bet"}
-        </div>
+        <div className={`limbo-sub ${subClass}`}>{subText}</div>
+        {history.length > 0 && (
+          <div className="limbo-history">
+            {history.map((h, i) => (
+              <span key={i} className={`limbo-chip ${h.win ? "is-win" : "is-loss"}`}>
+                {h.result.toFixed(2)}×
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="sg-panel">
-        <div className="dice-slider-box">
-          <div className="dice-slider-track">
-            <div className="dice-slider-fill" style={fillStyle} />
-            <div className="dice-slider-pin" style={{ left: `${targetPct}%` }} />
-            <input
-              className="dice-slider-input"
-              type="range"
-              min={DICE_MIN_TARGET}
-              max={DICE_MAX_TARGET}
-              step={0.01}
-              value={target}
-              onChange={(e) => onSlider(parseFloat(e.target.value))}
-              aria-label="Target"
-            />
-          </div>
-          <div className="dice-slider-scale">
-            <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
-          </div>
-        </div>
-
-        <div className="dice-stats">
-          <div className="dice-stat-card">
-            <div className="dice-stat-lbl">Multiplier</div>
-            <div className="dice-stat-val">{mult.toFixed(4)}×</div>
-          </div>
-          <div className="dice-stat-card">
-            <div className="dice-stat-lbl">Roll {over ? "Over" : "Under"}</div>
-            <div className="dice-stat-val">
-              <span>{target.toFixed(2)}</span>
-              <button className="dice-stat-flip" onClick={flipSide} type="button" aria-label="Flip side">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="17 1 21 5 17 9" />
-                  <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                  <polyline points="7 23 3 19 7 15" />
-                  <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                </svg>
-              </button>
+        <div className="sg-two-col">
+          <div className="sg-field">
+            <div className="sg-field-head">
+              <span>Target multiplier</span>
+            </div>
+            <div className="sg-input-row">
+              <input
+                className="sg-input"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min={LIMBO_MIN_TARGET}
+                max={LIMBO_MAX_TARGET}
+                value={targetStr}
+                onChange={(e) => onTargetChange(e.target.value)}
+                onBlur={onTargetBlur}
+              />
+              <span className="sg-input-suffix">×</span>
             </div>
           </div>
-          <div className="dice-stat-card">
-            <div className="dice-stat-lbl">Win chance</div>
-            <div className="dice-stat-val">{(chance * 100).toFixed(2)}%</div>
+          <div className="sg-field">
+            <div className="sg-field-head">
+              <span>Win chance</span>
+            </div>
+            <div className="sg-input-row">
+              <input className="sg-input" value={`${(chance * 100).toFixed(4)}%`} disabled readOnly />
+            </div>
           </div>
         </div>
 

@@ -17,3 +17,6 @@ Thumbs.db
 .idea/
 coverage/
 *.tsbuildinfo
+
+# Scraped reference (not shipped)
+reference/

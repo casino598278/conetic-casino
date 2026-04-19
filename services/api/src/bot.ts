@@ -57,12 +57,18 @@ export function startBot() {
   const openKb = () =>
     new InlineKeyboard().webApp("Open Casino", config.PUBLIC_WEB_URL);
 
+  const openGameKb = (game: string, label: string) =>
+    new InlineKeyboard().webApp(label, `${config.PUBLIC_WEB_URL}?game=${game}`);
+
   bot.command("start", async (ctx) => {
     await ctx.reply(
       "Welcome to Conetic Casino.\n\n" +
-        "Stake TON, win the pot. 0.5% rake, provably fair.\n\n" +
+        "Provably fair TON casino. 99% RTP on Originals.\n\n" +
         "Commands:\n" +
-        "/play — open the arena\n" +
+        "/play — Arena (multiplayer)\n" +
+        "/mine — Mining race (multiplayer)\n" +
+        "/dice — Dice\n" +
+        "/limbo — Limbo\n" +
         "/balance — check your balance\n" +
         "/deposit — get your deposit address\n" +
         "/withdraw — withdraw TON",
@@ -75,7 +81,19 @@ export function startBot() {
   });
 
   bot.command("mine", async (ctx) => {
-    await ctx.reply("Open the app and tap MINING to play the mining race.", { reply_markup: openKb() });
+    await ctx.reply("Mining race.", { reply_markup: openGameKb("mining", "Open Mining") });
+  });
+
+  bot.command("dice", async (ctx) => {
+    await ctx.reply("Dice. Roll over or under — 99% RTP.", {
+      reply_markup: openGameKb("dice", "Open Dice"),
+    });
+  });
+
+  bot.command("limbo", async (ctx) => {
+    await ctx.reply("Limbo. Pick a target multiplier — 99% RTP.", {
+      reply_markup: openGameKb("limbo", "Open Limbo"),
+    });
   });
 
   bot.command("balance", async (ctx) => {
@@ -230,6 +248,8 @@ export function startBot() {
       .setMyCommands([
         { command: "play", description: "Open the arena" },
         { command: "mine", description: "Open mining race" },
+        { command: "dice", description: "Open Dice" },
+        { command: "limbo", description: "Open Limbo" },
         { command: "balance", description: "Check your balance" },
         { command: "deposit", description: "Get your deposit address" },
         { command: "withdraw", description: "Withdraw TON" },

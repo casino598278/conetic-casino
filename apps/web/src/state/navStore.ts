@@ -1,11 +1,11 @@
 import { create } from "zustand";
 
-export type ShellTab = "browse" | "favourites" | "bets" | "wallet" | "menu";
-export type BrowseCategory = "originals" | "multiplayer" | "casino";
-export type GameKey = "arena" | "mining" | "dice" | null;
+export type ShellTab = "browse" | "favourites" | "recent" | "bets" | "menu";
+export type BrowseCategory = "originals" | "multiplayer";
+export type GameKey = "arena" | "mining" | "dice" | "limbo" | null;
 
-const VALID_GAMES: Exclude<GameKey, null>[] = ["arena", "mining", "dice"];
-const VALID_CATEGORIES: BrowseCategory[] = ["originals", "multiplayer", "casino"];
+const VALID_GAMES: Exclude<GameKey, null>[] = ["arena", "mining", "dice", "limbo"];
+const VALID_CATEGORIES: BrowseCategory[] = ["originals", "multiplayer"];
 
 function parseInitialGame(): GameKey {
   if (typeof window === "undefined") return null;
@@ -18,7 +18,6 @@ function parseInitialCategory(): BrowseCategory {
   if (typeof window === "undefined") return "originals";
   const q = new URLSearchParams(window.location.search).get("cat");
   if (q && (VALID_CATEGORIES as string[]).includes(q)) return q as BrowseCategory;
-  // If deep-linking into Arena/Mining, default category to multiplayer so Back feels right.
   const g = parseInitialGame();
   if (g === "arena" || g === "mining") return "multiplayer";
   return "originals";
