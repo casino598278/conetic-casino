@@ -1,160 +1,93 @@
-/* Minimalist tile artwork. One <svg> per game; no external assets.
-   Each draws into a 160x200 viewbox, scales to fill, with a subtle
-   gradient background keyed per game. */
+/* Tile artwork — monochrome lines on a flat surface.
+   One accent colour (sky blue) per game, no rainbows or chromatic gradients.
+   160x200 viewBox, scales to fill. */
 
 import type { JSX } from "react";
 
-interface Spec {
-  gradient: [string, string];
-  render: () => JSX.Element;
+const STROKE = "#8d9ca8";       // c-text-2 — neutral line
+const ACCENT = "#4cb8ff";        // c-accent — sky blue
+const SURFACE = "#12181f";       // c-surface — tile background
+const SURFACE_HI = "#1a2128";    // c-surface-2 — subtle lift
+
+function Base({ children }: { children: JSX.Element }) {
+  return (
+    <svg viewBox="0 0 160 200" preserveAspectRatio="xMidYMid slice" aria-hidden>
+      <rect width="160" height="200" fill={SURFACE} />
+      {children}
+    </svg>
+  );
 }
 
 const dice = (
   <g>
-    <rect x="36" y="38" width="60" height="60" rx="10" fill="#ffffff" opacity="0.95" />
-    <rect x="64" y="70" width="60" height="60" rx="10" fill="#ffffff" opacity="0.7" />
-    <circle cx="52" cy="54" r="5" fill="#0f212e" />
-    <circle cx="80" cy="82" r="5" fill="#0f212e" />
-    <circle cx="52" cy="82" r="5" fill="#0f212e" />
-    <circle cx="80" cy="100" r="5" fill="#0f212e" opacity="0.5" />
-    <circle cx="108" cy="100" r="5" fill="#0f212e" opacity="0.5" />
-    <circle cx="80" cy="128" r="5" fill="#0f212e" opacity="0.5" />
-    <circle cx="108" cy="128" r="5" fill="#0f212e" opacity="0.5" />
+    <rect x="32" y="56" width="64" height="64" rx="10" fill={SURFACE_HI} stroke={STROKE} strokeWidth="1.5" />
+    <rect x="68" y="92" width="64" height="64" rx="10" fill={SURFACE_HI} stroke={ACCENT} strokeWidth="1.5" />
+    <circle cx="50" cy="74" r="4" fill={STROKE} />
+    <circle cx="78" cy="102" r="4" fill={STROKE} />
+    <circle cx="50" cy="102" r="4" fill={STROKE} />
+    <circle cx="84" cy="108" r="3" fill={ACCENT} />
+    <circle cx="116" cy="108" r="3" fill={ACCENT} />
+    <circle cx="84" cy="140" r="3" fill={ACCENT} />
+    <circle cx="116" cy="140" r="3" fill={ACCENT} />
+    <circle cx="100" cy="124" r="3" fill={ACCENT} />
   </g>
 );
 
 const limbo = (
   <g>
-    <path d="M20 150 L80 50 L140 110" stroke="#00e701" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    <circle cx="140" cy="110" r="7" fill="#00e701" />
-    <text x="80" y="36" fontFamily="ui-sans-serif, sans-serif" fontSize="22" fontWeight="800" fill="#ffffff" textAnchor="middle">2.40×</text>
-  </g>
-);
-
-const mines = (
-  <g>
-    <rect x="30" y="40" width="30" height="30" rx="4" fill="#ffffff" opacity="0.12" />
-    <rect x="65" y="40" width="30" height="30" rx="4" fill="#ffffff" opacity="0.12" />
-    <rect x="100" y="40" width="30" height="30" rx="4" fill="#ffffff" opacity="0.12" />
-    <rect x="30" y="75" width="30" height="30" rx="4" fill="#ffffff" opacity="0.12" />
-    <rect x="100" y="75" width="30" height="30" rx="4" fill="#ffffff" opacity="0.12" />
-    <rect x="30" y="110" width="30" height="30" rx="4" fill="#ffffff" opacity="0.12" />
-    <rect x="65" y="110" width="30" height="30" rx="4" fill="#ffffff" opacity="0.12" />
-    <rect x="100" y="110" width="30" height="30" rx="4" fill="#ffffff" opacity="0.12" />
-    <g transform="translate(80 90)">
-      <circle r="11" fill="#ed4163" />
-      <path d="M-6 -6 L6 6 M6 -6 L-6 6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
-    </g>
-  </g>
-);
-
-const plinko = (
-  <g>
-    {Array.from({ length: 6 }).map((_, row) =>
-      Array.from({ length: row + 3 }).map((_, col) => {
-        const x = 80 + (col - (row + 2) / 2) * 14;
-        const y = 30 + row * 18;
-        return <circle key={`${row}-${col}`} cx={x} cy={y} r="2.5" fill="#ffffff" opacity="0.6" />;
-      }),
-    )}
-    <circle cx="80" cy="22" r="5" fill="#00e701">
-      <animate attributeName="cy" values="22;140;22" dur="3s" repeatCount="indefinite" />
-    </circle>
-  </g>
-);
-
-const keno = (
-  <g>
-    {[0, 1, 2, 3, 4].map((r) =>
-      [0, 1, 2, 3, 4].map((c) => {
-        const x = 24 + c * 24;
-        const y = 36 + r * 24;
-        const hit = (r * 5 + c) % 7 === 0;
-        return (
-          <rect
-            key={`${r}-${c}`}
-            x={x}
-            y={y}
-            width="20"
-            height="20"
-            rx="3"
-            fill={hit ? "#00e701" : "#ffffff"}
-            opacity={hit ? 1 : 0.15}
-          />
-        );
-      }),
-    )}
-  </g>
-);
-
-const crash = (
-  <g>
-    <path d="M10 160 Q50 160 70 120 Q90 80 150 20" stroke="#00e701" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-    <circle cx="150" cy="20" r="6" fill="#00e701" />
-    <text x="80" y="62" fontFamily="ui-sans-serif, sans-serif" fontSize="18" fontWeight="800" fill="#ffffff">8.42×</text>
-  </g>
-);
-
-const hilo = (
-  <g>
-    <rect x="32" y="42" width="46" height="64" rx="6" fill="#ffffff" />
-    <rect x="82" y="42" width="46" height="64" rx="6" fill="#ffffff" opacity="0.5" />
-    <text x="55" y="82" fontFamily="ui-sans-serif, sans-serif" fontSize="28" fontWeight="800" fill="#ed4163" textAnchor="middle">K</text>
-    <text x="55" y="102" fontFamily="ui-sans-serif, sans-serif" fontSize="16" fontWeight="800" fill="#ed4163" textAnchor="middle">♥</text>
-    <path d="M80 130 L105 115 L130 130" stroke="#00e701" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M80 160 L105 145 L130 160" stroke="#ed4163" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.4" />
-  </g>
-);
-
-const wheel = (
-  <g>
-    <circle cx="80" cy="100" r="55" fill="none" stroke="#ffffff" strokeWidth="2" opacity="0.25" />
-    {Array.from({ length: 12 }).map((_, i) => {
-      const a = (i * 30 - 90) * (Math.PI / 180);
-      const x = 80 + Math.cos(a) * 55;
-      const y = 100 + Math.sin(a) * 55;
-      const colors = ["#00e701", "#ffffff", "#ed4163", "#ffffff"];
-      return <circle key={i} cx={x} cy={y} r="6" fill={colors[i % 4]} opacity="0.9" />;
-    })}
-    <polygon points="80,36 73,50 87,50" fill="#ffb636" />
-    <circle cx="80" cy="100" r="6" fill="#ffb636" />
+    <line x1="24" y1="160" x2="136" y2="160" stroke={STROKE} strokeWidth="1" strokeOpacity="0.4" />
+    <line x1="24" y1="120" x2="136" y2="120" stroke={STROKE} strokeWidth="1" strokeOpacity="0.2" />
+    <line x1="24" y1="80" x2="136" y2="80" stroke={STROKE} strokeWidth="1" strokeOpacity="0.2" />
+    <polyline
+      points="24,150 58,130 88,90 128,40"
+      stroke={ACCENT}
+      strokeWidth="2"
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="128" cy="40" r="4" fill={ACCENT} />
   </g>
 );
 
 const arena = (
   <g>
-    <circle cx="80" cy="100" r="58" fill="none" stroke="#ffffff" strokeWidth="2" opacity="0.2" />
-    <path d="M 80 42 A 58 58 0 0 1 130 90 L 80 100 Z" fill="#00e701" opacity="0.8" />
-    <path d="M 130 90 A 58 58 0 0 1 118 140 L 80 100 Z" fill="#3bc8ff" opacity="0.7" />
-    <path d="M 118 140 A 58 58 0 0 1 42 140 L 80 100 Z" fill="#ffb636" opacity="0.7" />
-    <path d="M 42 140 A 58 58 0 0 1 30 90 L 80 100 Z" fill="#ed4163" opacity="0.7" />
-    <path d="M 30 90 A 58 58 0 0 1 80 42 L 80 100 Z" fill="#9ae9eb" opacity="0.7" />
-    <circle cx="80" cy="100" r="8" fill="#0f212e" />
+    <circle cx="80" cy="100" r="56" fill="none" stroke={STROKE} strokeWidth="1.5" strokeOpacity="0.4" />
+    <circle cx="80" cy="100" r="40" fill="none" stroke={ACCENT} strokeWidth="1.5" />
+    <circle cx="80" cy="100" r="5" fill={ACCENT} />
+    <line x1="80" y1="44" x2="80" y2="64" stroke={STROKE} strokeWidth="1" strokeOpacity="0.4" />
+    <line x1="80" y1="136" x2="80" y2="156" stroke={STROKE} strokeWidth="1" strokeOpacity="0.4" />
+    <line x1="24" y1="100" x2="44" y2="100" stroke={STROKE} strokeWidth="1" strokeOpacity="0.4" />
+    <line x1="116" y1="100" x2="136" y2="100" stroke={STROKE} strokeWidth="1" strokeOpacity="0.4" />
   </g>
 );
 
 const mining = (
   <g>
-    <rect x="30" y="130" width="100" height="28" rx="4" fill="#ffffff" opacity="0.15" />
-    <polygon points="60,40 90,40 100,70 50,70" fill="#00e701" />
-    <polygon points="60,40 75,30 90,40 75,55" fill="#5cff5d" />
-    <polygon points="100,80 120,80 118,110 102,110" fill="#9ae9eb" opacity="0.9" />
-    <polygon points="40,85 55,85 53,108 42,108" fill="#ed4163" opacity="0.85" />
-    <polygon points="70,90 82,90 80,105 72,105" fill="#ffb636" opacity="0.9" />
+    <line x1="20" y1="150" x2="140" y2="150" stroke={STROKE} strokeWidth="1" strokeOpacity="0.4" />
+    <polygon
+      points="52,60 108,60 120,110 40,110"
+      fill="none"
+      stroke={STROKE}
+      strokeWidth="1.5"
+    />
+    <polygon
+      points="52,60 80,40 108,60 80,80"
+      fill="none"
+      stroke={ACCENT}
+      strokeWidth="1.5"
+    />
+    <line x1="80" y1="40" x2="80" y2="110" stroke={STROKE} strokeWidth="1" strokeOpacity="0.5" />
+    <line x1="40" y1="110" x2="80" y2="80" stroke={STROKE} strokeWidth="1" strokeOpacity="0.5" />
+    <line x1="120" y1="110" x2="80" y2="80" stroke={STROKE} strokeWidth="1" strokeOpacity="0.5" />
   </g>
 );
 
-export const TILE_ART: Record<string, Spec> = {
-  dice:   { gradient: ["#1a3948", "#0e2230"], render: () => dice },
-  limbo:  { gradient: ["#1a3a2a", "#0b1923"], render: () => limbo },
-  mines:  { gradient: ["#3d1824", "#12161a"], render: () => mines },
-  plinko: { gradient: ["#1f2a4a", "#0b1923"], render: () => plinko },
-  keno:   { gradient: ["#1a3948", "#0e2230"], render: () => keno },
-  crash:  { gradient: ["#1a3a2a", "#0b1923"], render: () => crash },
-  hilo:   { gradient: ["#2a1a3a", "#12161a"], render: () => hilo },
-  wheel:  { gradient: ["#3a2a10", "#12161a"], render: () => wheel },
-  arena:  { gradient: ["#1a2c38", "#0b1923"], render: () => arena },
-  mining: { gradient: ["#2a2010", "#12161a"], render: () => mining },
+const TILE_ART: Record<string, JSX.Element> = {
+  dice,
+  limbo,
+  arena,
+  mining,
 };
 
 interface Props {
@@ -162,19 +95,7 @@ interface Props {
 }
 
 export function TileArt({ game }: Props) {
-  const spec = TILE_ART[game];
-  if (!spec) return null;
-  const id = `tile-grad-${game}`;
-  return (
-    <svg viewBox="0 0 160 200" preserveAspectRatio="xMidYMid slice" aria-hidden>
-      <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={spec.gradient[0]} />
-          <stop offset="100%" stopColor={spec.gradient[1]} />
-        </linearGradient>
-      </defs>
-      <rect width="160" height="200" fill={`url(#${id})`} />
-      {spec.render()}
-    </svg>
-  );
+  const art = TILE_ART[game];
+  if (!art) return <Base>{<g />}</Base>;
+  return <Base>{art}</Base>;
 }

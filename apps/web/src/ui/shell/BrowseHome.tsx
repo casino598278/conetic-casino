@@ -39,15 +39,7 @@ export function BrowseHome() {
       {category === "originals" ? (
         <section className="stake-section">
           <header className="stake-section-head">
-            <h2 className="stake-section-title">
-              <span className="stake-section-title-icon" aria-hidden>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="12 2 15 9 22 9 16 14 18 21 12 17 6 21 8 14 2 9 9 9 12 2" />
-                </svg>
-              </span>
-              Originals
-            </h2>
-            <span className="stake-section-count">{ORIGINALS.length}</span>
+            <h2 className="stake-section-title">Originals</h2>
           </header>
           <div className="stake-tile-grid">
             {ORIGINALS.map((o) => (
@@ -63,17 +55,7 @@ export function BrowseHome() {
       ) : (
         <section className="stake-section">
           <header className="stake-section-head">
-            <h2 className="stake-section-title">
-              <span className="stake-section-title-icon" aria-hidden>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="9" cy="7" r="3" />
-                  <circle cx="17" cy="10" r="3" />
-                  <path d="M3 20c0-3 3-5 6-5s6 2 6 5" />
-                  <path d="M14 20c0-2 2-4 4-4s4 2 4 4" />
-                </svg>
-              </span>
-              Multiplayer
-            </h2>
+            <h2 className="stake-section-title">Multiplayer</h2>
           </header>
           <div className="stake-tile-grid">
             {MULTIPLAYER.map((m) => (
@@ -82,7 +64,6 @@ export function BrowseHome() {
                 game={m.key}
                 name={m.name}
                 sub={m.sub}
-                badge="live"
                 onClick={() => openGame(m.game!)}
               />
             ))}

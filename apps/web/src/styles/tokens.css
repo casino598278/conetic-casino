@@ -1,59 +1,85 @@
-/* Stake.com design tokens — values extracted from the live stake.com DOM
-   (reference/stake/ scrape, April 2026). See global.css for legacy aliases. */
+/* Design tokens — sky blue on near-black.
+   One accent color, no chromatic decoration. */
 
 :root {
   /* Surfaces */
-  --stake-bg:        #0f212e;  /* body */
-  --stake-bg-deep:   #0b1923;  /* behind top/bottom nav, elevated drop */
-  --stake-card:      #1a2c38;  /* tile / card default */
-  --stake-card-hi:   #213743;  /* hovered / active card */
-  --stake-card-top:  #2f4553;  /* elevated surface (modal, input hover) */
-  --stake-border:    #2f4553;
-  --stake-border-hi: #557086;
-  --stake-divider:   rgba(255, 255, 255, 0.04);
+  --c-bg:        #0b1014;  /* body / deepest recess */
+  --c-bg-2:      #0e141a;  /* behind top/bottom nav */
+  --c-surface:   #12181f;  /* cards, tiles, stage, panel */
+  --c-surface-2: #1a2128;  /* hovered card, input recess, input fill */
+  --c-surface-3: #232d38;  /* elevated chips, outer borders */
+  --c-border:    #232d38;
+  --c-border-2:  #2f3c4a;
 
   /* Text */
-  --stake-text:    #ffffff;
-  --stake-text-2:  #b1bad3;
-  --stake-text-3:  #7f8ea8;
-  --stake-muted:   #557086;
+  --c-text:   #e7eef5;
+  --c-text-2: #8d9ca8;
+  --c-text-3: #5d6d7d;
 
-  /* Accents */
-  --stake-green:      #00e701;
-  --stake-green-d:    #00c301;
-  --stake-green-l:    #5cff5d;
-  --stake-green-g:    rgba(0, 231, 1, 0.14);
-  --stake-green-glow: rgba(0, 231, 1, 0.35);
-  --stake-red:        #ed4163;
-  --stake-red-d:      #c80833;
-  --stake-yellow:     #ffb636;
-  --stake-vip-gold:   #ffb947;
-  --stake-vip-diamond:#9ae9eb;
-  --stake-blue:       #1475e1;
-  --stake-blue-l:     #3bc8ff;
+  /* Accent — single chromatic colour used everywhere */
+  --c-accent:       #4cb8ff;
+  --c-accent-hi:    #6ec5ff;
+  --c-accent-lo:    #2ea0ef;
+  --c-accent-wash:  rgba(76, 184, 255, 0.12);
+  --c-accent-glow:  rgba(76, 184, 255, 0.22);
+
+  /* State */
+  --c-win:   #5fd88c;
+  --c-loss:  #e25f74;
+  --c-warn:  #f1a73e;
 
   /* Layout */
-  --shell-top-h:     56px;
-  --shell-bot-h:     64px;
-  --shell-pad-x:     12px;
-  --shell-pad-x-lg:  16px;
+  --shell-top-h:    56px;
+  --shell-bot-h:    60px;
+  --shell-pad-x:    14px;
+  --shell-pad-x-lg: 18px;
 
-  /* Radii — matches Stake's computed values: 0.125rem, 0.25rem, 0.5rem */
-  --rr-xs:   2px;
-  --rr-sm:   4px;
-  --rr:      8px;
-  --rr-lg:   12px;
-  --rr-xl:   16px;
+  /* Radii */
+  --rr-xs:   3px;
+  --rr-sm:   6px;
+  --rr:      10px;
+  --rr-lg:   14px;
+  --rr-xl:   18px;
   --rr-pill: 999px;
 
-  /* Type — Stake ships proxima-nova with system fallbacks. We can't embed
-     Proxima (paid) so we ride the native stack; the cascade is identical. */
-  --stake-font: "Proxima Nova", "proxima-nova", ui-sans-serif, -apple-system,
-                BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-                Arial, sans-serif;
-  --stake-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* Type */
+  --c-font: ui-sans-serif, -apple-system, BlinkMacSystemFont,
+            "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --c-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* Transitions */
-  --t-fast: 120ms cubic-bezier(.4, 0, .2, 1);
-  --t-med:  200ms cubic-bezier(.4, 0, .2, 1);
+  /* Motion — clamped, single easing curve */
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --t-xs:  100ms var(--ease);
+  --t-sm:  140ms var(--ease);
+  --t-md:  180ms var(--ease);
+
+  /* ---- Legacy aliases (so untouched game screens keep rendering) ---- */
+  --stake-bg: var(--c-bg);
+  --stake-bg-deep: var(--c-bg-2);
+  --stake-card: var(--c-surface);
+  --stake-card-hi: var(--c-surface-2);
+  --stake-card-top: var(--c-surface-3);
+  --stake-border: var(--c-border);
+  --stake-border-hi: var(--c-border-2);
+  --stake-text: var(--c-text);
+  --stake-text-2: var(--c-text-2);
+  --stake-text-3: var(--c-text-3);
+  --stake-muted: var(--c-text-3);
+  --stake-green: var(--c-accent);
+  --stake-green-d: var(--c-accent-lo);
+  --stake-green-l: var(--c-accent-hi);
+  --stake-green-g: var(--c-accent-wash);
+  --stake-green-glow: var(--c-accent-glow);
+  --stake-red: var(--c-loss);
+  --stake-red-d: #b83a55;
+  --stake-yellow: var(--c-warn);
+  --stake-vip-gold: var(--c-warn);
+  --stake-vip-diamond: var(--c-accent-hi);
+  --stake-blue: var(--c-accent);
+  --stake-blue-l: var(--c-accent-hi);
+
+  --t-fast: var(--t-sm);
+  --t-med: var(--t-md);
+  --stake-font: var(--c-font);
+  --stake-font-mono: var(--c-font-mono);
 }

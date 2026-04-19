@@ -123,9 +123,10 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
 
   const animate = (finalResult: number, finalWin: boolean, payout: string) => {
     if (animRef.current) cancelAnimationFrame(animRef.current);
-    // Fast count-up to the crash result. Duration scales with result so
-    // huge multipliers take visibly longer — like Stake's Crash/Limbo.
-    const DUR = Math.min(1600, 600 + Math.log10(Math.max(1, finalResult)) * 260);
+    // Fast count-up to the crash result, capped at 1s so the user never
+    // waits on the animation. Scales with result so 10× feels faster to
+    // arrive at than 1000×, matching Stake's Limbo.
+    const DUR = Math.min(1000, 420 + Math.log10(Math.max(1, finalResult)) * 180);
     const start = performance.now();
     const startVal = 1;
     const step = (t: number) => {

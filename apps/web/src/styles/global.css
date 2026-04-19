@@ -1,32 +1,33 @@
-/* Conetic Casino — Stake.com-inspired shell. */
+/* Conetic — sky-blue on near-black. */
 
 @import "./tokens.css";
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Legacy vars aliased onto Stake tokens so existing Arena/Mining chrome
-     inherits the new look without per-component rewrites (that's PR 4). */
-  --bg:    var(--stake-bg);
-  --s1:    var(--stake-card);
-  --s2:    var(--stake-card-hi);
-  --s3:    var(--stake-card-top);
-  --b1:    var(--stake-border);
-  --b2:    var(--stake-border-hi);
-  --blue:   var(--stake-green);
-  --blue-d: var(--stake-green-d);
-  --blue-l: var(--stake-green-l);
-  --blue-g: var(--stake-green-g);
-  --blue-f: rgba(0, 231, 1, 0.06);
-  --blue-glow: var(--stake-green-glow);
-  --gold:   var(--stake-vip-gold);
-  --win:    var(--stake-green);
-  --danger: var(--stake-red);
-  --text:  var(--stake-text);
-  --t2:    var(--stake-text-2);
-  --t3:    var(--stake-text-3);
-  --muted: var(--stake-muted);
-  --accent: var(--stake-green);
+  /* Legacy vars aliased onto new tokens so Arena/Mining chrome still reads
+     correctly. Intentional bias toward surface over accent — the new palette
+     is mostly grey, with sky blue held in reserve for interactive states. */
+  --bg:    var(--c-bg);
+  --s1:    var(--c-surface);
+  --s2:    var(--c-surface-2);
+  --s3:    var(--c-surface-3);
+  --b1:    var(--c-border);
+  --b2:    var(--c-border-2);
+  --blue:   var(--c-accent);
+  --blue-d: var(--c-accent-lo);
+  --blue-l: var(--c-accent-hi);
+  --blue-g: var(--c-accent-wash);
+  --blue-f: rgba(76, 184, 255, 0.05);
+  --blue-glow: var(--c-accent-glow);
+  --gold:   var(--c-warn);
+  --win:    var(--c-win);
+  --danger: var(--c-loss);
+  --text:  var(--c-text);
+  --t2:    var(--c-text-2);
+  --t3:    var(--c-text-3);
+  --muted: var(--c-text-3);
+  --accent: var(--c-accent);
   --r:     var(--rr-lg);
   --rs:    var(--rr);
   --safe-top:    env(safe-area-inset-top, 0px);
@@ -43,11 +44,12 @@ html, body, #root {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: var(--stake-bg);
-  color: var(--stake-text);
-  font-family: var(--stake-font);
-  font-feature-settings: "salt", "ss01", "kern";
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--c-font);
+  font-feature-settings: "kern";
   font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
@@ -1162,13 +1164,13 @@ button.primary {
 button.primary:hover:not(:disabled) { background: var(--blue-d); }
 button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 
-/* ============ Stake-style shell ============ */
+/* ============ Shell ============ */
 .stake-shell {
   display: flex;
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background: var(--stake-bg);
+  background: var(--c-bg);
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);
 }
@@ -1188,65 +1190,45 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   justify-content: space-between;
   height: var(--shell-top-h);
   padding: 0 var(--shell-pad-x);
-  background: var(--stake-bg-deep);
-  border-bottom: 1px solid var(--stake-border);
+  background: var(--c-bg-2);
+  border-bottom: 1px solid var(--c-border);
   flex-shrink: 0;
   gap: 10px;
 }
 .stake-topbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.stake-topbar-right { display: flex; align-items: center; gap: 6px; }
-
-.stake-logo {
-  font-weight: 900;
-  font-size: 15px;
-  letter-spacing: 0.02em;
-  color: var(--stake-text);
-  text-transform: lowercase;
-}
-.stake-logo-dot {
-  display: inline-block;
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: var(--stake-green);
-  margin-left: 2px;
-  vertical-align: middle;
-  box-shadow: 0 0 6px var(--stake-green-glow);
-}
+.stake-topbar-right { display: flex; align-items: center; gap: 8px; }
 
 .stake-wallet-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 4px 4px 12px;
-  background: var(--stake-card);
-  border: none;
+  gap: 10px;
+  padding: 4px 4px 4px 14px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
   border-radius: var(--rr);
-  color: var(--stake-text);
+  color: var(--c-text);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   height: 34px;
-  transition: background var(--t-fast);
+  transition: background var(--t-sm), border-color var(--t-sm);
 }
-.stake-wallet-pill:hover { background: var(--stake-card-hi); }
+.stake-wallet-pill:hover { background: var(--c-surface-2); border-color: var(--c-border-2); }
 .stake-wallet-pill:active { transform: scale(.98); }
-.stake-wallet-amount { color: var(--stake-text); letter-spacing: 0.01em; }
+.stake-wallet-amount { color: var(--c-text); }
 .stake-wallet-ccy {
-  color: var(--stake-text-3);
-  font-weight: 700;
+  color: var(--c-text-3);
   font-size: 11px;
-  letter-spacing: 0.04em;
-  padding-right: 2px;
+  font-weight: 600;
 }
 .stake-wallet-cta {
-  background: var(--stake-green);
-  color: var(--stake-bg);
+  background: var(--c-accent);
+  color: var(--c-bg);
   height: 26px;
-  padding: 0 10px;
+  padding: 0 12px;
   border-radius: var(--rr-sm);
   font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  font-weight: 700;
   display: inline-flex;
   align-items: center;
   line-height: 1;
@@ -1256,30 +1238,34 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   width: 34px;
   height: 34px;
   border-radius: var(--rr);
-  background: var(--stake-card);
-  border: none;
-  color: var(--stake-text-2);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-2);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--t-fast), color var(--t-fast);
+  transition: background var(--t-sm), color var(--t-sm), border-color var(--t-sm);
+  cursor: pointer;
 }
-.stake-icon-btn:hover { background: var(--stake-card-hi); color: var(--stake-text); }
+.stake-icon-btn:hover { background: var(--c-surface-2); color: var(--c-text); border-color: var(--c-border-2); }
 
 .stake-avatar-btn {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: var(--stake-card);
-  border: none;
-  color: var(--stake-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
   overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
   font-weight: 700;
+  cursor: pointer;
+  transition: border-color var(--t-sm);
 }
+.stake-avatar-btn:hover { border-color: var(--c-accent); }
 .stake-avatar-btn img { width: 100%; height: 100%; object-fit: cover; }
 
 /* ---------- Bottom nav ---------- */
@@ -1287,8 +1273,8 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   display: flex;
   align-items: stretch;
   height: var(--shell-bot-h);
-  background: var(--stake-bg-deep);
-  border-top: 1px solid var(--stake-border);
+  background: var(--c-bg-2);
+  border-top: 1px solid var(--c-border);
   flex-shrink: 0;
 }
 .stake-bottomnav-btn {
@@ -1299,62 +1285,66 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  color: var(--stake-text-3);
-  transition: color var(--t-fast);
-  padding: 4px 0;
+  gap: 4px;
+  color: var(--c-text-3);
+  transition: color var(--t-xs);
+  padding: 4px 0 6px;
   position: relative;
   cursor: pointer;
+  font-family: inherit;
 }
-.stake-bottomnav-btn:hover { color: var(--stake-text-2); }
-.stake-bottomnav-btn.is-active { color: var(--stake-green); }
-.stake-bottomnav-btn.is-active::before {
+.stake-bottomnav-btn:hover { color: var(--c-text-2); }
+.stake-bottomnav-btn.is-active { color: var(--c-accent); }
+/* Dot under label for active tab — calmer than a full top-bar */
+.stake-bottomnav-btn.is-active::after {
   content: "";
   position: absolute;
-  top: 0; left: 20%; right: 20%;
-  height: 2px;
-  background: var(--stake-green);
-  border-radius: 0 0 2px 2px;
+  bottom: 2px; left: 50%;
+  transform: translateX(-50%);
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--c-accent);
 }
 .stake-bottomnav-icon { display: inline-flex; }
 .stake-bottomnav-label {
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
-/* ---------- Pill tabs ---------- */
+/* ---------- Pill tabs (Originals / Multiplayer) ---------- */
 .stake-pill-tabs {
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  margin: 12px var(--shell-pad-x) 8px;
-  background: var(--stake-card);
-  border-radius: var(--rr);
+  gap: 6px;
+  padding: 0;
+  margin: 16px var(--shell-pad-x) 6px;
+  background: transparent;
+  border-radius: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
 .stake-pill-tabs::-webkit-scrollbar { display: none; }
 .stake-pill-tab {
-  flex: 1 0 auto;
-  background: transparent;
-  border: none;
-  color: var(--stake-text-2);
+  flex: 0 0 auto;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-2);
   padding: 8px 16px;
   font-size: 13px;
-  font-weight: 700;
-  border-radius: var(--rr-sm);
+  font-weight: 600;
+  border-radius: var(--rr-pill);
   white-space: nowrap;
-  transition: background var(--t-fast), color var(--t-fast);
+  transition: background var(--t-sm), color var(--t-sm), border-color var(--t-sm);
   line-height: 1.2;
   cursor: pointer;
   font-family: inherit;
 }
-.stake-pill-tab:hover { color: var(--stake-text); }
+.stake-pill-tab:hover { color: var(--c-text); border-color: var(--c-border-2); }
 .stake-pill-tab.is-active {
-  background: var(--stake-card-top);
-  color: var(--stake-text);
+  background: var(--c-accent-wash);
+  border-color: var(--c-accent);
+  color: var(--c-accent-hi);
 }
 
 /* ---------- Browse home ---------- */
@@ -1365,161 +1355,115 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
-  padding-bottom: 20px;
+  padding-bottom: 24px;
 }
 
-.stake-search {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 12px var(--shell-pad-x) 0;
-  padding: 0 14px;
-  background: var(--stake-card);
-  border: none;
-  border-radius: var(--rr);
-  color: var(--stake-text-3);
-  height: 40px;
-}
-.stake-search svg { flex-shrink: 0; }
-.stake-search-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--stake-text);
-  font-size: 14px;
-  font-family: inherit;
-  min-width: 0;
-}
-.stake-search-input::placeholder { color: var(--stake-text-3); }
-
-/* Section header */
-.stake-section { padding: 18px var(--shell-pad-x) 0; }
+/* Section header — minimal: just the title, nothing else */
+.stake-section { padding: 14px var(--shell-pad-x) 0; }
 .stake-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 2px 10px;
+  margin: 0 2px 12px;
 }
 .stake-section-title {
-  font-size: 15px;
-  font-weight: 800;
-  color: var(--stake-text);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  letter-spacing: 0.01em;
-}
-.stake-section-title-icon { display: inline-flex; color: var(--stake-green); }
-.stake-section-count {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--stake-text-3);
-  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text-2);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* ---------- Game tile grid ---------- */
 .stake-tile-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: 12px;
+  padding: 0 var(--shell-pad-x);
 }
 @media (min-width: 420px) {
   .stake-tile-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
+/* Tile = artwork card + label underneath (App Store style) */
 .stake-tile {
-  position: relative;
-  background: var(--stake-card);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: transparent;
   border: none;
-  border-radius: var(--rr);
-  overflow: hidden;
-  aspect-ratio: 4 / 5;
-  cursor: pointer;
-  transition: transform var(--t-fast);
   padding: 0;
+  cursor: pointer;
   color: inherit;
   font-family: inherit;
+  transition: transform var(--t-xs);
 }
 .stake-tile:hover { transform: translateY(-2px); }
 .stake-tile:active { transform: translateY(0) scale(.98); }
-.stake-tile.is-disabled { cursor: not-allowed; opacity: .55; }
+.stake-tile.is-disabled { cursor: not-allowed; opacity: .45; }
 .stake-tile.is-disabled:hover { transform: none; }
 
 .stake-tile-art {
-  position: absolute; inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--rr);
+  overflow: hidden;
+  transition: border-color var(--t-sm);
 }
+.stake-tile:hover .stake-tile-art { border-color: var(--c-border-2); }
 .stake-tile-art svg { width: 100%; height: 100%; display: block; }
 
 .stake-tile-foot {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  padding: 10px 10px 9px;
-  background: linear-gradient(180deg, transparent, rgba(11, 25, 35, 0.88) 60%);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  text-align: left;
+  padding: 0 2px;
+  text-align: center;
 }
 .stake-tile-name {
   font-size: 13px;
-  font-weight: 800;
-  color: var(--stake-text);
-  letter-spacing: 0.01em;
-  line-height: 1.1;
+  font-weight: 600;
+  color: var(--c-text);
+  letter-spacing: 0;
+  line-height: 1.2;
 }
 .stake-tile-sub {
   font-size: 10px;
-  font-weight: 600;
-  color: var(--stake-text-3);
+  font-weight: 500;
+  color: var(--c-text-3);
   font-variant-numeric: tabular-nums;
-  line-height: 1;
+  line-height: 1.2;
+  margin-top: 2px;
 }
 
 .stake-tile-badge {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  background: var(--stake-red);
-  color: #fff;
+  top: 8px; left: 8px;
+  background: var(--c-surface-3);
+  color: var(--c-text-2);
   font-size: 9px;
-  font-weight: 800;
-  padding: 2px 6px;
+  font-weight: 600;
+  padding: 2px 7px;
   border-radius: var(--rr-xs);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
 }
-.stake-tile-badge.is-soon { background: var(--stake-card-top); color: var(--stake-text-2); }
-.stake-tile-badge.is-live { background: var(--stake-red); }
-.stake-tile-badge.is-live::before {
-  content: "";
-  width: 5px; height: 5px;
-  background: #fff;
-  border-radius: 50%;
-  animation: stake-blink 1s infinite;
-}
-@keyframes stake-blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: .3; }
-}
+.stake-tile-badge.is-soon { background: var(--c-surface-3); color: var(--c-text-2); }
+.stake-tile-badge.is-live { background: var(--c-surface-3); color: var(--c-text-2); }
 
 .stake-empty {
   padding: 48px 20px;
   text-align: center;
-  color: var(--stake-text-3);
+  color: var(--c-text-3);
   font-size: 13px;
 }
 
 .stake-game-back {
   background: transparent;
   border: none;
-  color: var(--stake-text-2);
+  color: var(--c-text-2);
   font-size: 13px;
   font-weight: 600;
   padding: 10px var(--shell-pad-x);
@@ -1528,8 +1472,10 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   gap: 6px;
   align-self: flex-start;
   cursor: pointer;
+  font-family: inherit;
+  transition: color var(--t-xs);
 }
-.stake-game-back:hover { color: var(--stake-text); }
+.stake-game-back:hover { color: var(--c-text); }
 
 /* ---------- House game frame (Dice / Limbo etc.) ---------- */
 .sg-screen {
@@ -1545,33 +1491,34 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 0 10px;
+  padding: 8px 0 12px;
 }
 .sg-title {
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  color: var(--stake-text);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--c-text);
 }
 .sg-head-btn {
   background: transparent;
   border: none;
-  color: var(--stake-text-2);
+  color: var(--c-text-2);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 8px;
+  padding: 6px 10px;
   border-radius: var(--rr-sm);
   cursor: pointer;
   font-family: inherit;
+  transition: color var(--t-xs), background var(--t-xs);
 }
-.sg-head-btn:hover { color: var(--stake-text); background: var(--stake-card); }
+.sg-head-btn:hover { color: var(--c-text); background: var(--c-surface); }
 
 .sg-stage {
   position: relative;
-  background: var(--stake-card);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
   border-radius: var(--rr);
   min-height: 200px;
   display: flex;
@@ -1581,18 +1528,20 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 
 .sg-panel {
-  background: var(--stake-card);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
   border-radius: var(--rr);
-  padding: 12px;
+  padding: 14px;
   margin-top: 10px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 .sg-mode {
   display: flex;
   padding: 3px;
-  background: var(--stake-bg-deep);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
   border-radius: var(--rr-pill);
   gap: 2px;
 }
@@ -1600,16 +1549,16 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   flex: 1;
   background: transparent;
   border: none;
-  color: var(--stake-text-2);
-  padding: 8px 0;
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--c-text-2);
+  padding: 7px 0;
+  font-size: 12px;
+  font-weight: 600;
   border-radius: var(--rr-pill);
-  transition: background var(--t-fast), color var(--t-fast);
+  transition: background var(--t-sm), color var(--t-sm);
   cursor: pointer;
   font-family: inherit;
 }
-.sg-mode-btn.is-active { background: var(--stake-card-top); color: var(--stake-text); }
+.sg-mode-btn.is-active { background: var(--c-surface-2); color: var(--c-text); }
 .sg-mode-btn:disabled { opacity: .4; cursor: not-allowed; }
 
 .sg-field { display: flex; flex-direction: column; gap: 6px; }
@@ -1618,188 +1567,178 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   justify-content: space-between;
   align-items: baseline;
   font-size: 11px;
-  font-weight: 600;
-  color: var(--stake-text-3);
-  letter-spacing: 0.01em;
+  font-weight: 500;
+  color: var(--c-text-3);
 }
-.sg-field-head-val { color: var(--stake-text-2); font-variant-numeric: tabular-nums; }
+.sg-field-head-val { color: var(--c-text-2); font-variant-numeric: tabular-nums; }
 
 .sg-input-row {
   display: flex;
   align-items: stretch;
-  background: var(--stake-bg-deep);
-  border: 2px solid var(--stake-border);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
   border-radius: var(--rr);
   overflow: hidden;
-  transition: border-color var(--t-fast);
+  transition: border-color var(--t-sm);
 }
-.sg-input-row:focus-within { border-color: var(--stake-border-hi); }
+.sg-input-row:focus-within { border-color: var(--c-accent); }
 .sg-input {
   flex: 1;
   background: transparent;
   border: none;
   outline: none;
-  color: var(--stake-text);
+  color: var(--c-text);
   font-size: 14px;
   font-family: inherit;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 600;
   padding: 10px 12px;
   min-width: 0;
 }
-.sg-input[disabled] { color: var(--stake-text-2); }
+.sg-input[disabled] { color: var(--c-text-2); }
 .sg-input-suffix {
   display: inline-flex;
   align-items: center;
   padding: 0 12px;
-  color: var(--stake-text-3);
+  color: var(--c-text-3);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  border-left: 2px solid var(--stake-border);
+  font-weight: 600;
+  border-left: 1px solid var(--c-border);
 }
 .sg-input-btn {
-  background: var(--stake-card-top);
+  background: transparent;
   border: none;
-  color: var(--stake-text);
+  color: var(--c-text-2);
   padding: 0 12px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
-  border-left: 2px solid var(--stake-border);
-  transition: background var(--t-fast);
+  border-left: 1px solid var(--c-border);
+  transition: background var(--t-xs), color var(--t-xs);
   font-family: inherit;
 }
-.sg-input-btn:hover { background: var(--stake-border-hi); }
+.sg-input-btn:hover { background: var(--c-surface-2); color: var(--c-text); }
 
 .sg-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 .sg-cta {
-  background: var(--stake-green);
-  color: var(--stake-bg);
+  background: var(--c-accent);
+  color: var(--c-bg);
   border: none;
   border-radius: var(--rr);
-  padding: 14px;
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  padding: 13px;
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
-  transition: background var(--t-fast), transform var(--t-fast);
+  transition: background var(--t-sm), transform var(--t-xs);
   font-family: inherit;
 }
-.sg-cta:hover:not(:disabled) { background: var(--stake-green-l); }
+.sg-cta:hover:not(:disabled) { background: var(--c-accent-hi); }
 .sg-cta:active:not(:disabled) { transform: scale(.98); }
 .sg-cta:disabled {
-  background: var(--stake-card-top);
-  color: var(--stake-text-3);
+  background: var(--c-surface-2);
+  color: var(--c-text-3);
   cursor: not-allowed;
 }
 
 /* ---------- Dice stage ---------- */
 .dice-stage { padding: 40px 20px 28px; flex-direction: column; }
 .dice-stage-roll {
-  font-size: 56px;
-  font-weight: 800;
+  font-size: 54px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--stake-text);
-  letter-spacing: -0.02em;
+  color: var(--c-text);
+  letter-spacing: -0.025em;
   line-height: 1;
-  transition: color var(--t-fast);
+  transition: color var(--t-sm);
 }
-.dice-stage-roll.is-win { color: var(--stake-green); text-shadow: 0 0 32px var(--stake-green-glow); }
-.dice-stage-roll.is-loss { color: var(--stake-red); }
+.dice-stage-roll.is-win { color: var(--c-win); }
+.dice-stage-roll.is-loss { color: var(--c-loss); }
 .dice-stage-sub {
-  margin-top: 8px;
+  margin-top: 10px;
   font-size: 12px;
-  font-weight: 700;
-  color: var(--stake-text-3);
+  font-weight: 500;
+  color: var(--c-text-3);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
-.dice-stage-sub.is-win { color: var(--stake-green); }
-.dice-stage-sub.is-loss { color: var(--stake-red); }
+.dice-stage-sub.is-win { color: var(--c-win); }
+.dice-stage-sub.is-loss { color: var(--c-loss); }
 
 .dice-slider-box {
-  padding: 22px 12px 10px;
-  background: var(--stake-bg-deep);
+  padding: 22px 14px 10px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
   border-radius: var(--rr);
   position: relative;
 }
 .dice-slider-track {
   position: relative;
-  height: 10px;
-  border-radius: 5px;
-  background: var(--stake-red);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--c-surface-3);
 }
 .dice-slider-fill {
   position: absolute;
   top: 0; bottom: 0;
-  background: var(--stake-green);
-  border-radius: 5px;
-  /* No transition — fill tracks the slider in realtime during drag. */
+  background: var(--c-accent);
+  border-radius: 3px;
 }
 .dice-slider-pin {
   position: absolute;
-  top: -5px;
-  width: 10px;
-  height: 20px;
-  background: var(--stake-blue-l);
-  border-radius: 2px;
-  transform: translateX(-50%);
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3);
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  background: var(--c-text);
+  border: 2px solid var(--c-accent);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
   pointer-events: none;
-  /* No transition — pin tracks the slider in realtime during drag. */
 }
 
-/* Landing marker — diamond on the track + floating bubble showing the roll.
-   Appears instantly at the landing position with a tiny scale-in pop. */
+/* Landing marker — sky-blue dot that pops at the final roll position. */
 .dice-roll-marker {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 2;
-  animation: dice-marker-pop 260ms cubic-bezier(.2, 1.2, .3, 1);
+  animation: dice-marker-pop 180ms var(--ease);
 }
 @keyframes dice-marker-pop {
-  0%   { opacity: 0; transform: translate(-50%, -50%) scale(.5); }
-  60%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(.6); }
   100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 .dice-roll-marker::after {
   content: "";
   display: block;
-  width: 14px;
-  height: 14px;
-  background: var(--stake-text);
-  transform: rotate(45deg);
-  border-radius: 2px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 0 0 2px var(--stake-bg-deep);
+  width: 12px;
+  height: 12px;
+  background: var(--c-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--c-bg), 0 0 10px var(--c-accent-glow);
 }
 .dice-roll-marker.is-win::after {
-  background: var(--stake-green);
-  box-shadow: 0 0 16px var(--stake-green-glow), 0 0 0 2px var(--stake-bg-deep);
+  background: var(--c-win);
+  box-shadow: 0 0 0 3px var(--c-bg), 0 0 10px rgba(95, 216, 140, 0.35);
 }
 .dice-roll-marker.is-loss::after {
-  background: var(--stake-red);
-  box-shadow: 0 0 12px rgba(237, 65, 99, 0.45), 0 0 0 2px var(--stake-bg-deep);
+  background: var(--c-loss);
+  box-shadow: 0 0 0 3px var(--c-bg), 0 0 10px rgba(226, 95, 116, 0.35);
 }
 .dice-roll-marker-bubble {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  background: var(--stake-bg-deep);
-  color: var(--stake-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
   border-radius: var(--rr-sm);
-  padding: 3px 7px;
+  padding: 3px 8px;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
   white-space: nowrap;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 .dice-roll-marker-bubble::after {
   content: "";
@@ -1808,10 +1747,10 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   left: 50%;
   transform: translateX(-50%);
   border: 4px solid transparent;
-  border-top-color: var(--stake-bg-deep);
+  border-top-color: var(--c-border);
 }
-.dice-roll-marker.is-win .dice-roll-marker-bubble { color: var(--stake-green); }
-.dice-roll-marker.is-loss .dice-roll-marker-bubble { color: var(--stake-red); }
+.dice-roll-marker.is-win .dice-roll-marker-bubble { color: var(--c-win); }
+.dice-roll-marker.is-loss .dice-roll-marker-bubble { color: var(--c-loss); }
 .dice-slider-input {
   position: absolute;
   inset: 0;
@@ -1825,10 +1764,10 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 .dice-slider-scale {
   display: flex;
   justify-content: space-between;
-  margin-top: 10px;
+  margin-top: 12px;
   font-size: 10px;
-  color: var(--stake-text-3);
-  font-weight: 700;
+  color: var(--c-text-3);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1838,7 +1777,8 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   gap: 8px;
 }
 .dice-stat-card {
-  background: var(--stake-bg-deep);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
   border-radius: var(--rr-sm);
   padding: 8px 10px;
   display: flex;
@@ -1847,15 +1787,13 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 .dice-stat-lbl {
   font-size: 10px;
-  color: var(--stake-text-3);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  color: var(--c-text-3);
+  font-weight: 500;
 }
 .dice-stat-val {
   font-size: 14px;
-  font-weight: 800;
-  color: var(--stake-text);
+  font-weight: 600;
+  color: var(--c-text);
   font-variant-numeric: tabular-nums;
   display: flex;
   align-items: center;
@@ -1863,103 +1801,104 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   gap: 4px;
 }
 .dice-stat-flip {
-  background: var(--stake-card-top);
-  border: none;
-  color: var(--stake-text);
-  border-radius: var(--rr-sm);
+  background: transparent;
+  border: 1px solid var(--c-border);
+  color: var(--c-text-2);
+  border-radius: var(--rr-xs);
   padding: 2px 6px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   line-height: 1;
   font-family: inherit;
+  transition: color var(--t-xs), border-color var(--t-xs);
 }
-.dice-stat-flip:hover { background: var(--stake-border-hi); }
+.dice-stat-flip:hover { color: var(--c-accent); border-color: var(--c-accent); }
 
 /* ---------- Limbo stage ---------- */
 .limbo-stage {
   flex-direction: column;
-  padding: 44px 20px 24px;
-  background: radial-gradient(ellipse at center, #213743 0%, var(--stake-card) 72%);
+  padding: 48px 20px 24px;
+  background: var(--c-surface);
 }
 .limbo-mult {
-  font-size: 72px;
-  font-weight: 800;
+  font-size: 68px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--stake-text-2);
-  letter-spacing: -0.03em;
+  color: var(--c-text-2);
+  letter-spacing: -0.035em;
   line-height: 1;
-  transition: color var(--t-fast);
+  transition: color var(--t-sm);
 }
-.limbo-mult.is-win { color: var(--stake-green); text-shadow: 0 0 44px var(--stake-green-glow); }
-.limbo-mult.is-loss { color: var(--stake-red); }
-.limbo-mult-suffix { font-size: 48px; margin-left: 2px; opacity: 0.7; }
+.limbo-mult.is-win { color: var(--c-win); }
+.limbo-mult.is-loss { color: var(--c-loss); }
+.limbo-mult-suffix { font-size: 42px; margin-left: 2px; opacity: 0.6; }
 .limbo-sub {
-  margin-top: 10px;
+  margin-top: 12px;
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--stake-text-3);
+  font-weight: 500;
+  color: var(--c-text-3);
 }
-.limbo-sub.is-win { color: var(--stake-green); }
-.limbo-sub.is-loss { color: var(--stake-red); }
+.limbo-sub.is-win { color: var(--c-win); }
+.limbo-sub.is-loss { color: var(--c-loss); }
 .limbo-history {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
   justify-content: center;
-  margin-top: 18px;
+  margin-top: 20px;
   max-width: 100%;
 }
 .limbo-chip {
-  background: var(--stake-bg-deep);
-  color: var(--stake-text-2);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-2);
   font-size: 11px;
-  font-weight: 800;
-  padding: 4px 8px;
-  border-radius: var(--rr-sm);
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--rr-xs);
   font-variant-numeric: tabular-nums;
 }
-.limbo-chip.is-win { color: var(--stake-green); }
-.limbo-chip.is-loss { color: var(--stake-red); }
+.limbo-chip.is-win { color: var(--c-win); border-color: rgba(95, 216, 140, 0.3); }
+.limbo-chip.is-loss { color: var(--c-loss); border-color: rgba(226, 95, 116, 0.3); }
 
 /* ============ Profile sheet ============ */
 .profile-head {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 4px 2px 14px;
-  border-bottom: 1px solid var(--stake-border);
-  margin-bottom: 14px;
+  padding: 4px 2px 16px;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 16px;
 }
 .profile-avatar {
   width: 52px; height: 52px;
   border-radius: 50%;
-  background: var(--stake-card-top);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
   overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--stake-text);
+  color: var(--c-text);
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 600;
   flex-shrink: 0;
 }
 .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .profile-identity { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .profile-name {
   font-size: 15px;
-  font-weight: 800;
-  color: var(--stake-text);
+  font-weight: 600;
+  color: var(--c-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .profile-balance {
   font-size: 12px;
-  font-weight: 700;
-  color: var(--stake-text-3);
+  font-weight: 500;
+  color: var(--c-text-3);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1969,7 +1908,8 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   gap: 8px;
 }
 .profile-kpi {
-  background: var(--stake-bg-deep);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
   border-radius: var(--rr-sm);
   padding: 10px 12px;
   display: flex;
@@ -1978,27 +1918,23 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 .profile-kpi-lbl {
   font-size: 10px;
-  color: var(--stake-text-3);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  color: var(--c-text-3);
+  font-weight: 500;
 }
 .profile-kpi-val {
   font-size: 14px;
-  font-weight: 800;
-  color: var(--stake-text);
+  font-weight: 600;
+  color: var(--c-text);
   font-variant-numeric: tabular-nums;
 }
-.profile-kpi-val.is-win { color: var(--stake-green); }
-.profile-kpi-val.is-loss { color: var(--stake-red); }
+.profile-kpi-val.is-win { color: var(--c-win); }
+.profile-kpi-val.is-loss { color: var(--c-loss); }
 
 .profile-section-title {
   font-size: 11px;
-  color: var(--stake-text-3);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  margin: 16px 2px 8px;
+  color: var(--c-text-3);
+  font-weight: 500;
+  margin: 18px 2px 8px;
 }
 .profile-games {
   display: flex;
@@ -2010,29 +1946,30 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  background: var(--stake-bg-deep);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
   border-radius: var(--rr-sm);
 }
 .profile-game-name {
   font-size: 13px;
-  font-weight: 800;
-  color: var(--stake-text);
+  font-weight: 600;
+  color: var(--c-text);
   flex: 1;
   min-width: 0;
 }
 .profile-game-plays {
   font-size: 11px;
-  color: var(--stake-text-3);
+  color: var(--c-text-3);
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 500;
 }
 .profile-game-net {
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.profile-game-net.is-win { color: var(--stake-green); }
-.profile-game-net.is-loss { color: var(--stake-red); }
+.profile-game-net.is-win { color: var(--c-win); }
+.profile-game-net.is-loss { color: var(--c-loss); }
 
 /* ============ Fairness drawer ============ */
 .fair-body { display: flex; flex-direction: column; gap: 10px; }
