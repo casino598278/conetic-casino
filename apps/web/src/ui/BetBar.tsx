@@ -15,7 +15,7 @@ function tonToNano(ton: number): bigint {
 
 function fmtTon(nano: bigint): string {
   const w = nano / NANO;
-  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
   return f ? `${w}.${f}` : `${w}`;
 }
 

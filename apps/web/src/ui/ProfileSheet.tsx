@@ -20,7 +20,7 @@ function fmtTon(s: string): string {
   const neg = n < 0n;
   const abs = neg ? -n : n;
   const w = abs / NANO;
-  const f = (abs % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+  const f = (abs % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
   const body = f ? `${w}.${f}` : `${w}`;
   return neg ? `−${body}` : body;
 }

@@ -14,7 +14,7 @@ const HISTORY_MAX = 10;
 
 function fmtTon(nano: bigint): string {
   const w = nano / NANO;
-  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
   return f ? `${w}.${f}` : `${w}`;
 }
 function tonToNano(ton: number): bigint {
@@ -153,7 +153,7 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
   const setAmountNano = (nano: bigint) => {
     if (nano <= 0n) { setAmount("0"); return; }
     const w = nano / NANO;
-    const f = (nano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+    const f = (nano % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
     setAmount(f ? `${w}.${f}` : `${w}`);
   };
   const half = () => setAmountNano(tonToNano(parseFloat(amount) || 0) / 2n);
@@ -174,7 +174,7 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
   const subText = busy
     ? "Rolling…"
     : settled?.win && lastPayout
-      ? `+${fmtTon(BigInt(lastPayout) - tonToNano(parseFloat(amount) || 0))} TON`
+      ? `+${fmtTon(BigInt(lastPayout) - tonToNano(parseFloat(amount) || 0))}`
       : settled?.win === false
         ? "Loss"
         : "Place a bet";
@@ -256,7 +256,7 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
           <div className="sg-field-head">
             <span>Bet amount</span>
             <span className="sg-field-head-val">
-              Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(4).replace(/\.?0+$/, "") : "0"}
+              Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(2).replace(/\.?0+$/, "") : "0"}
             </span>
           </div>
           <div className="sg-input-row">

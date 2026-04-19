@@ -4,7 +4,7 @@ const NANO = 1_000_000_000n;
 function fmtTon(s: string): string {
   const n = BigInt(s);
   const w = n / NANO;
-  const f = (n % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+  const f = (n % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
   return f ? `${w}.${f}` : `${w}`;
 }
 

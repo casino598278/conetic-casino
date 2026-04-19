@@ -12,14 +12,14 @@ function fmtTon(nanoStr: string): string {
   const nano = BigInt(nanoStr);
   const whole = nano / NANO;
   const frac = nano % NANO;
-  const fracStr = (frac.toString().padStart(9, "0")).slice(0, 4).replace(/0+$/, "");
+  const fracStr = (frac.toString().padStart(9, "0")).slice(0, 2).replace(/0+$/, "");
   return fracStr ? `${whole}.${fracStr}` : `${whole}`;
 }
 
 function HashPill({ hash }: { hash: string | null }) {
   const [copied, setCopied] = useState(false);
   if (!hash) return null;
-  const short = `${hash.slice(0, 4)}…${hash.slice(-4)}`;
+  const short = `${hash.slice(0, 2)}…${hash.slice(-4)}`;
   const copy = () => {
     navigator.clipboard?.writeText(hash).then(() => {
       setCopied(true);

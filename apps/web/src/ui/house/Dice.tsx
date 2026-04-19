@@ -14,7 +14,7 @@ const NANO = 1_000_000_000n;
 
 function fmtTon(nano: bigint): string {
   const w = nano / NANO;
-  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
   return f ? `${w}.${f}` : `${w}`;
 }
 function tonToNano(ton: number): bigint {
@@ -25,7 +25,7 @@ function tonToNano(ton: number): bigint {
 }
 function nanoToTonDisplay(nano: bigint): string {
   const w = nano / NANO;
-  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
   return f ? `${w}.${f}` : `${w}`;
 }
 
@@ -85,7 +85,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
 
   // Keep the buffers in sync whenever `target`/`over` change via the slider.
   useEffect(() => {
-    setMultStr(mult.toFixed(4));
+    setMultStr(mult.toFixed(2));
     setChanceStr((chance * 100).toFixed(2));
     setTargetStr(target.toFixed(2));
   }, [target, over]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -196,7 +196,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
   // yields that multiplier on the current side.
   const commitMult = () => {
     const m = parseFloat(multStr);
-    if (!Number.isFinite(m) || m <= 1) { setMultStr(mult.toFixed(4)); return; }
+    if (!Number.isFinite(m) || m <= 1) { setMultStr(mult.toFixed(2)); return; }
     const newChance = HOUSE_RTP / m;
     const pct = Math.max(0, Math.min(1, newChance)) * 100;
     const newTarget = over ? DICE_MAX_TARGET + DICE_MIN_TARGET - pct : pct;
@@ -266,7 +266,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
         </div>
         <div className={`dice-stage-sub ${win === true ? "is-win" : win === false ? "is-loss" : ""}`}>
           {win === true && lastPayout
-            ? `+${fmtTon(BigInt(lastPayout) - tonToNano(parseFloat(amount) || 0))} TON`
+            ? `+${fmtTon(BigInt(lastPayout) - tonToNano(parseFloat(amount) || 0))}`
             : win === false
               ? "Loss"
               : "Place a bet"}
@@ -365,7 +365,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
           <div className="sg-field-head">
             <span>Bet amount</span>
             <span className="sg-field-head-val">
-              Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(4).replace(/\.?0+$/, "") : "0"}
+              Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(2).replace(/\.?0+$/, "") : "0"}
             </span>
           </div>
           <div className="sg-input-row">
