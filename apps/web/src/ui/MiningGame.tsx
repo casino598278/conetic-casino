@@ -8,7 +8,7 @@ import {
   type MiningResultEvent,
   type GemType,
 } from "@conetic/shared";
-import { api } from "../net/api";
+import { api, ApiError } from "../net/api";
 import { haptic, notify } from "../telegram/initWebApp";
 import { useWalletStore } from "../state/walletStore";
 import { colorForUser } from "../arena/colors";
@@ -299,8 +299,8 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
 
   const stake = async (amountNano: bigint) => {
     if (busy) return;
-    if (amountNano <= 0n) { onError?.("invalid amount"); return; }
-    if (amountNano > balance) { onError?.("insufficient balance"); notify("error"); return; }
+    if (amountNano <= 0n) { onError?.("Enter a bet amount"); return; }
+    if (amountNano > balance) { onError?.("Insufficient balance"); notify("error"); return; }
     setBusy(true);
     haptic("medium");
     try {
@@ -309,10 +309,22 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
         body: JSON.stringify({ amountNano: amountNano.toString(), clientSeedHex: randomClientSeed() }),
       });
       notify("success");
-    } catch (err: any) {
+    } catch (err: unknown) {
       notify("error");
-      const msg: string = err?.message ?? "failed";
-      onError?.(msg.includes("phase_closed") ? "betting closed" : msg.includes("insufficient") ? "insufficient balance" : msg.slice(0, 60));
+      if (err instanceof ApiError) {
+        switch (err.code) {
+          case "insufficient_balance": onError?.("Insufficient balance"); break;
+          case "phase_closed":         onError?.("Betting is closed"); break;
+          case "above_max":            onError?.("Bet is above the maximum"); break;
+          case "below_min":            onError?.("Bet is below the minimum"); break;
+          case "rate_limited":         onError?.("Slow down — wait a moment"); break;
+          case "http_502":
+          case "http_503":             onError?.("Server is restarting — try again"); break;
+          default:                     onError?.(`Bet failed (${err.code})`);
+        }
+      } else {
+        onError?.("Bet failed. Check your connection.");
+      }
     } finally {
       setBusy(false);
     }

@@ -9,14 +9,16 @@ function fmtTon(nano: bigint): string {
 
 interface Props {
   onOpenWallet: () => void;
-  onOpenSearch: () => void;
   onOpenMenu: () => void;
 }
 
-export function TopBar({ onOpenWallet, onOpenSearch, onOpenMenu }: Props) {
+export function TopBar({ onOpenWallet, onOpenMenu }: Props) {
   const balance = useWalletStore((s) => s.balanceNano);
   const user = useWalletStore((s) => s.user);
   const initial = (user?.firstName ?? user?.username ?? "?").slice(0, 1).toUpperCase();
+  // user == null while auth is in flight — show a neutral placeholder
+  // rather than flashing "0.00 TON".
+  const balanceStr = user ? fmtTon(balance) : "—";
 
   return (
     <header className="stake-topbar">
@@ -32,20 +34,9 @@ export function TopBar({ onOpenWallet, onOpenSearch, onOpenMenu }: Props) {
           onClick={onOpenWallet}
           aria-label="Wallet"
         >
-          <span className="stake-wallet-amount">{fmtTon(balance)}</span>
+          <span className="stake-wallet-amount">{balanceStr}</span>
           <span className="stake-wallet-ccy">TON</span>
           <span className="stake-wallet-cta">Wallet</span>
-        </button>
-        <button
-          type="button"
-          className="stake-icon-btn"
-          onClick={onOpenSearch}
-          aria-label="Search"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="7" />
-            <line x1="21" y1="21" x2="16.5" y2="16.5" />
-          </svg>
         </button>
         <button
           type="button"

@@ -5,7 +5,7 @@ import {
   diceMultiplier,
   diceWinChance,
 } from "@conetic/shared";
-import { api } from "../../net/api";
+import { api, ApiError } from "../../net/api";
 import { haptic, notify } from "../../telegram/initWebApp";
 import { useWalletStore } from "../../state/walletStore";
 
@@ -52,6 +52,9 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
   const [roll, setRoll] = useState<number | null>(null);
   const [win, setWin] = useState<boolean | null>(null);
   const [lastPayout, setLastPayout] = useState<string | null>(null);
+  // Position of the "landing marker" on the track, 0..100. null = hidden.
+  const [markerPos, setMarkerPos] = useState<number | null>(null);
+  const [markerWin, setMarkerWin] = useState<boolean | null>(null);
   const animRef = useRef<number | null>(null);
 
   const chance = diceWinChance({ target, over });
@@ -77,30 +80,54 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
       setLastPayout(r.payoutNano);
       setBalance(BigInt(r.newBalanceNano));
       notify(r.outcome.win ? "success" : "warning");
-    } catch (err: any) {
+    } catch (err: unknown) {
       notify("error");
-      const msg = String(err?.message ?? "failed");
-      if (msg.includes("insufficient")) onError?.("Insufficient balance");
-      else if (msg.includes("rate_limited")) onError?.("Too fast");
-      else if (msg.includes("max_win")) onError?.("Bet too high for this target");
-      else if (msg.includes("daily_limit")) onError?.("Daily win limit reached");
-      else onError?.(msg.slice(0, 60));
+      onError?.(humanizeBetError(err));
     } finally {
       setBusy(false);
     }
   };
 
+  function humanizeBetError(err: unknown): string {
+    if (err instanceof ApiError) {
+      switch (err.code) {
+        case "insufficient_balance": return "Insufficient balance";
+        case "rate_limited":         return "Slow down — wait a moment";
+        case "below_min":            return "Bet is below the minimum";
+        case "above_max":            return "Bet is above the maximum";
+        case "max_win_exceeded":     return "Bet too high for this target";
+        case "daily_limit":          return "Daily win limit reached";
+        case "invalid_params":       return "Invalid target";
+        case "unauthenticated":      return "Session expired — reopen the app";
+        case "http_502":
+        case "http_503":             return "Server is restarting — try again";
+        default:                     return `Bet failed (${err.code})`;
+      }
+    }
+    return "Bet failed. Check your connection.";
+  }
+
   const animateRoll = (finalRoll: number, finalWin: boolean) => {
     if (animRef.current) cancelAnimationFrame(animRef.current);
+    // Marker enters colorless; colors itself win/loss at settle so the reveal
+    // lands with the number, not before.
+    setMarkerWin(null);
     const start = performance.now();
     const DUR = 700;
+    // 0..99.99 → 0..100 on the track
+    const finalPos = Math.min(100, Math.max(0, finalRoll));
     const step = (t: number) => {
       const p = Math.min(1, (t - start) / DUR);
       if (p < 1) {
+        // Ease-out for the marker, jitter for the number
+        const eased = 1 - Math.pow(1 - p, 3);
+        setMarkerPos(eased * finalPos);
         setRoll(Math.round(Math.random() * 9999) / 100);
         setWin(null);
         animRef.current = requestAnimationFrame(step);
       } else {
+        setMarkerPos(finalPos);
+        setMarkerWin(finalWin);
         setRoll(finalRoll);
         setWin(finalWin);
         animRef.current = null;
@@ -112,6 +139,13 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
   const onSlider = (v: number) => {
     const clamped = Math.max(DICE_MIN_TARGET, Math.min(DICE_MAX_TARGET, v));
     setTarget(Math.round(clamped * 100) / 100);
+    // Moving the slider between rolls clears the previous marker so the
+    // track reads cleanly for the next bet.
+    if (!busy && markerPos != null) {
+      setMarkerPos(null);
+      setMarkerWin(null);
+      setWin(null);
+    }
   };
 
   const flipSide = () => setOver((v) => !v);
@@ -176,6 +210,18 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
           <div className="dice-slider-track">
             <div className="dice-slider-fill" style={fillStyle} />
             <div className="dice-slider-pin" style={{ left: `${targetPct}%` }} />
+            {markerPos != null && (
+              <div
+                className={`dice-roll-marker ${
+                  markerWin === true ? "is-win" : markerWin === false ? "is-loss" : ""
+                }`}
+                style={{ left: `${markerPos}%` }}
+              >
+                <span className="dice-roll-marker-bubble">
+                  {roll != null ? roll.toFixed(2) : ""}
+                </span>
+              </div>
+            )}
             <input
               className="dice-slider-input"
               type="range"

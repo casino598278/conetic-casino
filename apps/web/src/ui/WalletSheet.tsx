@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { api } from "../net/api";
+import { api, ApiError } from "../net/api";
 import { useWalletStore } from "../state/walletStore";
 
 interface DepositInfo {
@@ -45,7 +45,7 @@ export function WalletSheet({ onClose }: Props) {
         const link = `ton://transfer/${d.address}?text=${encodeURIComponent(d.memo)}`;
         QRCode.toDataURL(link, { width: 220, margin: 1 }).then(setQrSrc);
       })
-      .catch((err) => setMsg(err.message ?? "failed to load deposit info"));
+      .catch(() => setMsg("Couldn't load deposit info. Try again shortly."));
   }, []);
 
   const submitWithdraw = async () => {
@@ -60,10 +60,30 @@ export function WalletSheet({ onClose }: Props) {
         body: JSON.stringify({ toAddress: withdrawAddr.trim(), amountNano: nano.toString() }),
       });
       setMsg(`Withdrawal queued (${r.status}). It will be sent shortly.`);
-    } catch (err: any) {
-      setMsg(err.message ?? "withdraw failed");
+    } catch (err: unknown) {
+      setMsg(humanizeWithdrawError(err));
     }
   };
+
+  function humanizeWithdrawError(err: unknown): string {
+    if (err instanceof ApiError) {
+      switch (err.code) {
+        case "insufficient_balance": return "Insufficient balance";
+        case "invalid_address":      return "Invalid TON address";
+        case "below_min":            return "Amount is below the minimum";
+        case "above_max":            return "Amount is above the maximum";
+        case "daily_limit":          return "Daily withdraw limit reached";
+        case "rate_limited":         return "Wait a moment before withdrawing again";
+        case "cooldown":             return "Withdraw cooldown — try again shortly";
+        case "demo_mode":            return "Withdrawals disabled in demo mode";
+        case "http_502":
+        case "http_503":             return "Server is restarting — try again";
+        default:                     return `Withdraw failed (${err.code})`;
+      }
+    }
+    if (err instanceof Error && err.message === "invalid amount") return "Invalid amount";
+    return "Withdraw failed. Check your connection.";
+  }
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -159,8 +179,8 @@ export function WalletSheet({ onClose }: Props) {
                 });
                 setAnonEnabled(res.anonMode);
                 setMsg(res.anonMode ? `Anonymous: ${res.anonName}` : "Anonymous mode off");
-              } catch (err: any) {
-                setMsg(err?.message ?? "failed");
+              } catch {
+                setMsg("Couldn't toggle anonymous mode");
               }
             }}
           >

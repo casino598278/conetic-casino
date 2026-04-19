@@ -323,7 +323,6 @@ export default function App() {
     <>
       <AppShell
         onOpenWallet={() => setShowWallet(true)}
-        onOpenSearch={() => {/* search placeholder (PR 3) */}}
         onOpenMenu={() => setShowLeaderboard(true)}
       >
         {renderGame()}

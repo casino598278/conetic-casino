@@ -5,7 +5,7 @@ import {
   limboMultiplier,
   limboWinChance,
 } from "@conetic/shared";
-import { api } from "../../net/api";
+import { api, ApiError } from "../../net/api";
 import { haptic, notify } from "../../telegram/initWebApp";
 import { useWalletStore } from "../../state/walletStore";
 
@@ -95,17 +95,31 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
       });
       animate(r.outcome.result, r.outcome.win, r.payoutNano);
       setBalance(BigInt(r.newBalanceNano));
-    } catch (err: any) {
+    } catch (err: unknown) {
       notify("error");
-      const msg = String(err?.message ?? "failed");
-      if (msg.includes("insufficient")) onError?.("Insufficient balance");
-      else if (msg.includes("rate_limited")) onError?.("Too fast");
-      else if (msg.includes("max_win")) onError?.("Bet too high for this target");
-      else if (msg.includes("daily_limit")) onError?.("Daily win limit reached");
-      else onError?.(msg.slice(0, 60));
+      onError?.(humanizeBetError(err));
       setBusy(false);
     }
   };
+
+  function humanizeBetError(err: unknown): string {
+    if (err instanceof ApiError) {
+      switch (err.code) {
+        case "insufficient_balance": return "Insufficient balance";
+        case "rate_limited":         return "Slow down — wait a moment";
+        case "below_min":            return "Bet is below the minimum";
+        case "above_max":            return "Bet is above the maximum";
+        case "max_win_exceeded":     return "Target too high for this bet";
+        case "daily_limit":          return "Daily win limit reached";
+        case "invalid_params":       return "Invalid target multiplier";
+        case "unauthenticated":      return "Session expired — reopen the app";
+        case "http_502":
+        case "http_503":             return "Server is restarting — try again";
+        default:                     return `Bet failed (${err.code})`;
+      }
+    }
+    return "Bet failed. Check your connection.";
+  }
 
   const animate = (finalResult: number, finalWin: boolean, payout: string) => {
     if (animRef.current) cancelAnimationFrame(animRef.current);
