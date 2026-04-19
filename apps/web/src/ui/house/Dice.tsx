@@ -63,6 +63,9 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
   const [over, setOver] = useState(true);
   const [amount, setAmount] = useState("1");
   const [busy, setBusy] = useState(false);
+  // Separate from `busy` so the Bet button stays disabled during the roll
+  // animation even after the API call has returned.
+  const [rolling, setRolling] = useState(false);
   const [roll, setRoll] = useState<number | null>(null);
   const [win, setWin] = useState<boolean | null>(null);
   const [lastPayout, setLastPayout] = useState<string | null>(null);
@@ -141,14 +144,37 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
     return "Bet failed. Check your connection.";
   }
 
+  // ~0.8s eased roll: marker and the big number both travel from their last
+  // position (or 0) to the final roll via ease-out cubic. Win/loss colour
+  // only commits at the end so the reveal lands with the settle.
   const animateRoll = (finalRoll: number, finalWin: boolean) => {
     if (animRef.current) cancelAnimationFrame(animRef.current);
-    animRef.current = null;
+    const startPos = markerPos ?? 0;
+    const startRoll = roll ?? 0;
     const finalPos = Math.min(100, Math.max(0, finalRoll));
-    setMarkerPos(finalPos);
-    setMarkerWin(finalWin);
-    setRoll(finalRoll);
-    setWin(finalWin);
+    const start = performance.now();
+    const DUR = 800;
+    setRolling(true);
+    // Reset colours so mid-animation the marker reads neutral, not last-win.
+    setMarkerWin(null);
+    setWin(null);
+    const step = (t: number) => {
+      const p = Math.min(1, (t - start) / DUR);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setMarkerPos(startPos + (finalPos - startPos) * eased);
+      setRoll(startRoll + (finalRoll - startRoll) * eased);
+      if (p < 1) {
+        animRef.current = requestAnimationFrame(step);
+      } else {
+        setMarkerPos(finalPos);
+        setRoll(finalRoll);
+        setMarkerWin(finalWin);
+        setWin(finalWin);
+        setRolling(false);
+        animRef.current = null;
+      }
+    };
+    animRef.current = requestAnimationFrame(step);
   };
 
   const onSlider = (v: number) => {
@@ -213,7 +239,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
     ? { left: `${targetPct}%`, right: "0%" }
     : { left: "0%", right: `${100 - targetPct}%` };
 
-  const betReady = !busy && (parseFloat(amount) || 0) > 0;
+  const betReady = !busy && !rolling && (parseFloat(amount) || 0) > 0;
 
   return (
     <div className="sg-screen">
@@ -358,7 +384,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
         </div>
 
         <button className="sg-cta" onClick={play} disabled={!betReady} type="button">
-          {busy ? "Rolling…" : "Bet"}
+          {busy || rolling ? "Rolling…" : "Bet"}
         </button>
       </div>
     </div>
