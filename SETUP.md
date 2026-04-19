@@ -21,7 +21,7 @@ Compare against your local `main`:
 git log origin/main --oneline -1
 ```
 
-If the SHAs don't match, Render didn't pick up your push. Skip to **§7 Auto-deploy broke** — that's the actual problem 90% of the time.
+If the SHAs don't match, Render didn't pick up your push. The webhook is unreliable — don't wait on it, trigger a deploy manually via **§6 Normal update flow**. Only drop into **§7 Auto-deploy broke** if the manual trigger also fails.
 
 ---
 
@@ -129,18 +129,69 @@ The command list is cached by Telegram clients. If new commands (e.g. `/topup`) 
 
 ## 6. Normal update flow
 
-Push to `main` → Render webhook fires → build → deploy. That's it.
+The GitHub → Render webhook is unreliable (see §7), so the working model is: **push, then trigger a deploy manually via the Render API.** Don't wait on auto-deploy.
 
-Always confirm the deploy landed:
+### 6a. Render API key
+
+Dashboard → avatar (top-right) → **Account Settings** → **API Keys** → **Create API Key**. Name it e.g. `casino`. The key is shown **once** (`rnd_…`) — copy it immediately.
+
+Store it wherever you keep project secrets. For local use, put it in the repo-root `.env` (already in `.gitignore`):
+
+```bash
+RENDER_API_KEY=rnd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+RENDER_SERVICE_ID=srv-d7ft0nu8bjmc73budqeg
+```
+
+And source it before running deploy commands:
+
+```bash
+set -a; source .env; set +a
+```
+
+### 6b. Deploy + verify
 
 ```bash
 git push origin main
-# wait ~2 min for build
-curl https://conetic-casino.onrender.com/api/version
-# buildId should match the short SHA of your latest commit
+
+# Trigger the deploy. Returns JSON with an id like dep-xxxx and status "build_in_progress".
+curl -sS -X POST \
+  -H "Authorization: Bearer $RENDER_API_KEY" \
+  -H "Content-Type: application/json" \
+  "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
+  -d '{}'
+
+# Poll /api/version until buildId matches HEAD. Build is ~2 min on starter.
+EXPECTED=$(git rev-parse --short=8 HEAD)
+until curl -sS https://conetic-casino.onrender.com/api/version | grep -q "\"buildId\":\"$EXPECTED\""; do
+  sleep 15
+  echo "still $(curl -sS https://conetic-casino.onrender.com/api/version)"
+done
+echo "LIVE on $EXPECTED"
 ```
 
-If the SHA doesn't move after 3–5 minutes, go to §7.
+Every PR must end with `/api/version` returning the freshly pushed short SHA before the PR is "done." If the SHA doesn't move after ~5 minutes, inspect the deploy:
+
+```bash
+curl -sS -H "Authorization: Bearer $RENDER_API_KEY" \
+  "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys?limit=1"
+```
+
+A `status` of `live` means it worked; `build_failed` / `update_failed` — go pull logs. `canceled` usually means a newer deploy superseded this one.
+
+### 6c. Useful Render API calls
+
+| Purpose | Call |
+|---|---|
+| Trigger deploy of HEAD | `POST /v1/services/$RENDER_SERVICE_ID/deploys` |
+| Trigger deploy pinned to a commit | `POST .../deploys` with body `{"commitId":"<full-40-sha>"}` |
+| Force clean rebuild (clear cache) | `POST .../deploys` with body `{"clearCache":"clear"}` |
+| List recent deploys | `GET /v1/services/$RENDER_SERVICE_ID/deploys?limit=10` |
+| Fetch one deploy's detail | `GET /v1/services/$RENDER_SERVICE_ID/deploys/<dep-id>` |
+| Tail logs for a deploy | `GET /v1/logs?ownerId=<owner>&resource=<dep-id>&limit=200` |
+| Read one env var | `GET /v1/services/$RENDER_SERVICE_ID/env-vars` |
+| Suspend/resume service | `POST /v1/services/$RENDER_SERVICE_ID/suspend` / `.../resume` |
+
+All calls need `Authorization: Bearer $RENDER_API_KEY`.
 
 Expect ~30 s of downtime on the starter plan during redeploy. SQLite is on a persistent disk, so balances / rounds / ledger survive.
 
