@@ -161,6 +161,7 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
     const doubled = tonToNano(parseFloat(amount) || 0) * 2n;
     setAmountNano(doubled > balance ? balance : doubled);
   };
+  const maxBet = () => setAmountNano(balance);
 
   const displayMultStr =
     display >= 100 ? display.toFixed(2)
@@ -241,7 +242,12 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
               <span>Win chance</span>
             </div>
             <div className="sg-input-row">
-              <input className="sg-input" value={`${(chance * 100).toFixed(4)}%`} disabled readOnly />
+              <input
+                className="sg-input"
+                value={`${(chance * 100).toFixed(2).replace(/\.?0+$/, "")}%`}
+                disabled
+                readOnly
+              />
             </div>
           </div>
         </div>
@@ -250,7 +256,7 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
           <div className="sg-field-head">
             <span>Bet amount</span>
             <span className="sg-field-head-val">
-              Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(4).replace(/\.?0+$/, "") : "0"}&nbsp;TON
+              Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(4).replace(/\.?0+$/, "") : "0"}
             </span>
           </div>
           <div className="sg-input-row">
@@ -263,9 +269,9 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
-            <span className="sg-input-suffix">TON</span>
             <button className="sg-input-btn" onClick={half} type="button">½</button>
             <button className="sg-input-btn" onClick={double} type="button">2×</button>
+            <button className="sg-input-btn" onClick={maxBet} type="button">Max</button>
           </div>
         </div>
 

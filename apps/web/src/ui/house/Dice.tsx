@@ -153,7 +153,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
     const startRoll = roll ?? 0;
     const finalPos = Math.min(100, Math.max(0, finalRoll));
     const start = performance.now();
-    const DUR = 800;
+    const DUR = 550;
     setRolling(true);
     // Reset colours so mid-animation the marker reads neutral, not last-win.
     setMarkerWin(null);
@@ -233,6 +233,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
     const doubled = tonToNano(parseFloat(amount) || 0) * 2n;
     setAmountNano(doubled > balance ? balance : doubled);
   };
+  const maxBet = () => setAmountNano(balance);
 
   const targetPct = ((target - DICE_MIN_TARGET) / (DICE_MAX_TARGET - DICE_MIN_TARGET)) * 100;
   const fillStyle = over
@@ -364,7 +365,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
           <div className="sg-field-head">
             <span>Bet amount</span>
             <span className="sg-field-head-val">
-              Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(4).replace(/\.?0+$/, "") : "0"}&nbsp;TON
+              Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(4).replace(/\.?0+$/, "") : "0"}
             </span>
           </div>
           <div className="sg-input-row">
@@ -377,9 +378,9 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
-            <span className="sg-input-suffix">TON</span>
             <button className="sg-input-btn" onClick={half} type="button">½</button>
             <button className="sg-input-btn" onClick={double} type="button">2×</button>
+            <button className="sg-input-btn" onClick={maxBet} type="button">Max</button>
           </div>
         </div>
 

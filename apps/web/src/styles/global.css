@@ -1594,8 +1594,18 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   font-weight: 600;
   padding: 10px 12px;
   min-width: 0;
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 .sg-input[disabled] { color: var(--c-text-2); }
+/* Strip browser spinner arrows + clear-X from number inputs */
+.sg-input::-webkit-outer-spin-button,
+.sg-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.sg-input::-ms-clear,
+.sg-input::-ms-reveal { display: none; width: 0; height: 0; }
 .sg-input-suffix {
   display: inline-flex;
   align-items: center;
