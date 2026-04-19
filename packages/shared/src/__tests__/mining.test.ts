@@ -49,6 +49,6 @@ describe("mining (2D map with gem types)", () => {
   });
 
   it("target points constant is set", () => {
-    expect(MINING.TARGET_POINTS).toBe(100);
+    expect(MINING.TARGET_POINTS).toBe(301);
   });
 });

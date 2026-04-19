@@ -1,11 +1,22 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { db } from "./db/sqlite.js";
 import { config } from "./config.js";
-import { upsertTelegramUser, getUserById, setDemoMode } from "./db/repo/users.js";
+import { upsertTelegramUser, getUserById, setDemoMode, isDemo, getDemoBalance, setDemoBalance } from "./db/repo/users.js";
 import { getBalanceNano } from "./db/repo/ledger.js";
 import { getHotWalletAddressString } from "./wallet/ton/tonAdapter.js";
 
 const ADMIN_TG_ID = 6712382929;
+const TOPUP_COOLDOWN_MS = 30 * 60 * 1000;
+const TOPUP_AMOUNT_NANO = 25n * 1_000_000_000n;
+const topupLastAt = new Map<string, number>();
+
+function fmtDuration(ms: number): string {
+  const totalSec = Math.ceil(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  if (m <= 0) return `${s}s`;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
 
 let started = false;
 let botInstance: Bot | null = null;
@@ -172,6 +183,33 @@ export function startBot() {
     await ctx.reply(`Demo mode for ${targetUser.username ? "@" + targetUser.username : targetUser.first_name}: ${updated.demo_mode ? "ON" : "OFF"}`);
   });
 
+  bot.command("topup", async (ctx) => {
+    const from = ctx.from;
+    if (!from) return;
+    const user = upsertTelegramUser({
+      tgId: from.id,
+      username: from.username ?? null,
+      firstName: from.first_name ?? "Player",
+      photoUrl: null,
+    });
+    if (!isDemo(user.id)) {
+      await ctx.reply("Top-up is only available in demo mode.");
+      return;
+    }
+    const now = Date.now();
+    const last = topupLastAt.get(user.id) ?? 0;
+    const elapsed = now - last;
+    if (elapsed < TOPUP_COOLDOWN_MS) {
+      const remaining = TOPUP_COOLDOWN_MS - elapsed;
+      await ctx.reply(`Top-up on cooldown. Try again in ${fmtDuration(remaining)}.`);
+      return;
+    }
+    const newBal = getDemoBalance(user.id) + TOPUP_AMOUNT_NANO;
+    setDemoBalance(user.id, newBal);
+    topupLastAt.set(user.id, now);
+    await ctx.reply(`Topped up 25 TON (demo). Balance: ${fmtTon(newBal)} TON.\nNext top-up in 30m.`);
+  });
+
   bot.command("withdraw", async (ctx) => {
     await ctx.reply(
       "Open the Wallet tab in the app to withdraw.",
@@ -195,6 +233,7 @@ export function startBot() {
         { command: "balance", description: "Check your balance" },
         { command: "deposit", description: "Get your deposit address" },
         { command: "withdraw", description: "Withdraw TON" },
+        { command: "topup", description: "Demo-only: +25 TON (30m cooldown)" },
       ])
       .catch((err) => console.warn("[bot] setMyCommands failed:", err.message));
   } else {

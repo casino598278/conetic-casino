@@ -11,7 +11,7 @@ export const MINING = {
   TICK_MS: 100,
   DURATION_MS: 15000,
   GEMS_ON_MAP: 15,
-  TARGET_POINTS: 100,        // first-to-N points wins
+  TARGET_POINTS: 301,        // first-to-N points wins
   LUCK_MULTIPLIER: 10,       // how much stake influences "chase rare gems" behaviour
 } as const;
 

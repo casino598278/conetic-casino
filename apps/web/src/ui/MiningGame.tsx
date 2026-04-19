@@ -73,6 +73,15 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
   const [livePoints, setLivePoints] = useState<number[]>([]);
   const sortedPlayers = useMemo(() => [...players].sort((a, b) => (a.userId < b.userId ? -1 : 1)), [players]);
 
+  // Reset local round state when a new round starts (server clears trajectorySeed on commit).
+  useEffect(() => {
+    if (trajectorySeed || result) return;
+    setLivePoints([]);
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }, [trajectorySeed, result]);
+
   // Preload avatar images
   useEffect(() => {
     for (const p of sortedPlayers) {

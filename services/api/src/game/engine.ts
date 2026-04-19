@@ -182,8 +182,8 @@ export class GameEngine extends EventEmitter {
         this.cancelWaitingTimeout();
         this.beginCountdown();
       } else if (bets.length === 1 && !this.waitingTimeout) {
-        // First player joined — start 5min refund timer.
-        this.waitingTimeout = setTimeout(() => this.refundWaitingRound(), 5 * 60 * 1000);
+        // First player joined — start 30min refund timer.
+        this.waitingTimeout = setTimeout(() => this.refundWaitingRound(), 30 * 60 * 1000);
       }
     }
 

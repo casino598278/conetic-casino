@@ -34,7 +34,7 @@ import { notifyUser } from "../bot.js";
 
 const NANO = 1_000_000_000n;
 const COUNTDOWN_MS = 15_000;        // 15s waiting countdown
-const WAITING_TIMEOUT_MS = 5 * 60 * 1000;
+const WAITING_TIMEOUT_MS = 30 * 60 * 1000;
 const BET_LOCK_BUFFER_MS = 1500;
 const BET_RATE_WINDOW_MS = 10000;
 const BET_RATE_MAX = 5;
