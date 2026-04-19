@@ -60,7 +60,7 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
 
   const chance = limboWinChance({ target });
   const mult = limboMultiplier({ target });
-  const profit = (parseFloat(amount) || 0) * (mult - 1);
+  const profitTon = (parseFloat(amount) || 0) * (mult - 1);
 
   useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
 
@@ -149,14 +149,18 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
     animRef.current = requestAnimationFrame(step);
   };
 
-  const half = () => {
-    const v = Math.max(0, (parseFloat(amount) || 0) / 2);
-    setAmount(v ? v.toFixed(4).replace(/\.?0+$/, "") : "0");
+  const setAmountNano = (nano: bigint) => {
+    if (nano <= 0n) { setAmount("0"); return; }
+    const w = nano / NANO;
+    const f = (nano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+    setAmount(f ? `${w}.${f}` : `${w}`);
   };
+  const half = () => setAmountNano(tonToNano(parseFloat(amount) || 0) / 2n);
   const double = () => {
-    const v = (parseFloat(amount) || 0) * 2;
-    setAmount(v ? v.toFixed(4).replace(/\.?0+$/, "") : "0");
+    const doubled = tonToNano(parseFloat(amount) || 0) * 2n;
+    setAmountNano(doubled > balance ? balance : doubled);
   };
+  const maxBet = () => setAmountNano(balance);
 
   const displayMultStr =
     display >= 100 ? display.toFixed(2)
@@ -245,7 +249,9 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
         <div className="sg-field">
           <div className="sg-field-head">
             <span>Bet amount</span>
-            <span className="sg-field-head-val">${profit > 0 ? profit.toFixed(4) : "0.00"}</span>
+            <span className="sg-field-head-val">
+              Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(4).replace(/\.?0+$/, "") : "0"}&nbsp;TON
+            </span>
           </div>
           <div className="sg-input-row">
             <input
@@ -260,6 +266,7 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
             <span className="sg-input-suffix">TON</span>
             <button className="sg-input-btn" onClick={half} type="button">½</button>
             <button className="sg-input-btn" onClick={double} type="button">2×</button>
+            <button className="sg-input-btn" onClick={maxBet} type="button">Max</button>
           </div>
         </div>
 

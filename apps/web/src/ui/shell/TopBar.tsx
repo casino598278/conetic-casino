@@ -9,10 +9,10 @@ function fmtTon(nano: bigint): string {
 
 interface Props {
   onOpenWallet: () => void;
-  onOpenMenu: () => void;
+  onOpenProfile: () => void;
 }
 
-export function TopBar({ onOpenWallet, onOpenMenu }: Props) {
+export function TopBar({ onOpenWallet, onOpenProfile }: Props) {
   const balance = useWalletStore((s) => s.balanceNano);
   const user = useWalletStore((s) => s.user);
   const initial = (user?.firstName ?? user?.username ?? "?").slice(0, 1).toUpperCase();
@@ -22,11 +22,7 @@ export function TopBar({ onOpenWallet, onOpenMenu }: Props) {
 
   return (
     <header className="stake-topbar">
-      <div className="stake-topbar-left">
-        <span className="stake-logo">
-          conetic<span className="stake-logo-dot" aria-hidden />
-        </span>
-      </div>
+      <div className="stake-topbar-left" aria-hidden />
       <div className="stake-topbar-right">
         <button
           type="button"
@@ -41,8 +37,8 @@ export function TopBar({ onOpenWallet, onOpenMenu }: Props) {
         <button
           type="button"
           className="stake-avatar-btn"
-          onClick={onOpenMenu}
-          aria-label="Menu"
+          onClick={onOpenProfile}
+          aria-label="Profile"
         >
           {user?.photoUrl ? (
             <img src={`/api/avatar?url=${encodeURIComponent(user.photoUrl)}`} alt="" />

@@ -11,6 +11,13 @@ import {
 } from "../db/repo/rounds.js";
 import { getUserById } from "../db/repo/users.js";
 import { requireAuthHook } from "../auth/authPlugin.js";
+import {
+  recentBets,
+  biggestBets,
+  luckiestBets,
+  userBets,
+  profileStats,
+} from "../db/repo/bets.js";
 
 interface PublicRound {
   roundId: number;
@@ -104,5 +111,20 @@ export async function registerRoundRoutes(app: FastifyInstance) {
   app.get("/rounds/mine", { preHandler: requireAuthHook }, async (req, reply) => {
     if (!req.user) return reply.code(401).send({ error: "unauthenticated" });
     return roundsForUser(req.user.sub, 25).map(toPublic);
+  });
+
+  // Unified cross-game bet feed. HistoryModal uses these.
+  app.get("/bets/recent",   async () => recentBets(50));
+  app.get("/bets/biggest",  async () => biggestBets(50));
+  app.get("/bets/luckiest", async () => luckiestBets(50));
+  app.get("/bets/mine", { preHandler: requireAuthHook }, async (req, reply) => {
+    if (!req.user) return reply.code(401).send({ error: "unauthenticated" });
+    return userBets(req.user.sub, 100);
+  });
+
+  // Profile stats — aggregated across every game for the current user.
+  app.get("/me/stats", { preHandler: requireAuthHook }, async (req, reply) => {
+    if (!req.user) return reply.code(401).send({ error: "unauthenticated" });
+    return profileStats(req.user.sub);
   });
 }

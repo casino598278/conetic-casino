@@ -5,6 +5,7 @@ import { WalletSheet } from "./ui/WalletSheet";
 import { WinScreen } from "./ui/WinScreen";
 import { HistoryModal } from "./ui/HistoryModal";
 import { Leaderboard } from "./ui/Leaderboard";
+import { ProfileSheet } from "./ui/ProfileSheet";
 import { FairnessDrawer } from "./ui/house/FairnessDrawer";
 import { AppShell } from "./ui/shell/AppShell";
 import { BrowseHome } from "./ui/shell/BrowseHome";
@@ -74,6 +75,7 @@ export default function App() {
   const [showWallet, setShowWallet] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [fairnessOpen, setFairnessOpen] = useState(false);
 
   const miningSnap = useMiningStore((s) => s.snapshot);
@@ -323,7 +325,7 @@ export default function App() {
     <>
       <AppShell
         onOpenWallet={() => setShowWallet(true)}
-        onOpenMenu={() => setShowLeaderboard(true)}
+        onOpenProfile={() => setShowProfile(true)}
       >
         {renderGame()}
       </AppShell>
@@ -331,6 +333,7 @@ export default function App() {
       {showWallet && <WalletSheet onClose={() => setShowWallet(false)} />}
       {showHistory && <HistoryModal onClose={() => setShowHistory(false)} />}
       {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
+      {showProfile && <ProfileSheet onClose={() => setShowProfile(false)} />}
       <FairnessDrawer open={fairnessOpen} onClose={() => setFairnessOpen(false)} />
 
       {winScreenVisible && lastResult && snapshot && (() => {

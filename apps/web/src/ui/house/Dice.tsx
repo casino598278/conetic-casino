@@ -23,6 +23,12 @@ function tonToNano(ton: number): bigint {
   return BigInt(whole!) * NANO + BigInt(frac.padEnd(9, "0").slice(0, 9));
 }
 
+function nanoToTonDisplay(nano: bigint): string {
+  const w = nano / NANO;
+  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
+  return f ? `${w}.${f}` : `${w}`;
+}
+
 interface PlayResult {
   ok: true;
   outcome: { roll: number; win: boolean };
@@ -59,7 +65,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
 
   const chance = diceWinChance({ target, over });
   const mult = diceMultiplier({ target, over });
-  const profit = (parseFloat(amount) || 0) * (mult - 1);
+  const profitTon = (parseFloat(amount) || 0) * (mult - 1);
 
   useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
 
@@ -107,33 +113,17 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
     return "Bet failed. Check your connection.";
   }
 
+  // Dice result is instant — no spin / count-up. The marker appears directly
+  // at the landing position and pops in via a 300 ms CSS transform on mount.
+  // (Slow count animation is Limbo's thing; Dice should feel like a real die.)
   const animateRoll = (finalRoll: number, finalWin: boolean) => {
     if (animRef.current) cancelAnimationFrame(animRef.current);
-    // Marker enters colorless; colors itself win/loss at settle so the reveal
-    // lands with the number, not before.
-    setMarkerWin(null);
-    const start = performance.now();
-    const DUR = 700;
-    // 0..99.99 → 0..100 on the track
+    animRef.current = null;
     const finalPos = Math.min(100, Math.max(0, finalRoll));
-    const step = (t: number) => {
-      const p = Math.min(1, (t - start) / DUR);
-      if (p < 1) {
-        // Ease-out for the marker, jitter for the number
-        const eased = 1 - Math.pow(1 - p, 3);
-        setMarkerPos(eased * finalPos);
-        setRoll(Math.round(Math.random() * 9999) / 100);
-        setWin(null);
-        animRef.current = requestAnimationFrame(step);
-      } else {
-        setMarkerPos(finalPos);
-        setMarkerWin(finalWin);
-        setRoll(finalRoll);
-        setWin(finalWin);
-        animRef.current = null;
-      }
-    };
-    animRef.current = requestAnimationFrame(step);
+    setMarkerPos(finalPos);
+    setMarkerWin(finalWin);
+    setRoll(finalRoll);
+    setWin(finalWin);
   };
 
   const onSlider = (v: number) => {
@@ -149,14 +139,22 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
   };
 
   const flipSide = () => setOver((v) => !v);
+  const setAmountNano = (nano: bigint) => {
+    if (nano <= 0n) { setAmount("0"); return; }
+    setAmount(nanoToTonDisplay(nano));
+  };
   const half = () => {
-    const v = Math.max(0, (parseFloat(amount) || 0) / 2);
-    setAmount(v ? v.toFixed(4).replace(/\.?0+$/, "") : "0");
+    const cur = tonToNano(parseFloat(amount) || 0);
+    setAmountNano(cur / 2n);
   };
+  // 2× doubles — but clamps to the current balance so a user with 3.39 TON
+  // who has 2 typed can't jump to an un-placeable 4.
   const double = () => {
-    const v = (parseFloat(amount) || 0) * 2;
-    setAmount(v ? v.toFixed(4).replace(/\.?0+$/, "") : "0");
+    const cur = tonToNano(parseFloat(amount) || 0);
+    const doubled = cur * 2n;
+    setAmountNano(doubled > balance ? balance : doubled);
   };
+  const maxBet = () => setAmountNano(balance);
 
   // Slider visuals: fill covers the winning range, pin sits at the target.
   const targetPct = ((target - DICE_MIN_TARGET) / (DICE_MAX_TARGET - DICE_MIN_TARGET)) * 100;
@@ -266,7 +264,9 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
         <div className="sg-field">
           <div className="sg-field-head">
             <span>Bet amount</span>
-            <span className="sg-field-head-val">${profit > 0 ? profit.toFixed(4) : "0.00"}</span>
+            <span className="sg-field-head-val">
+              Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(4).replace(/\.?0+$/, "") : "0"}&nbsp;TON
+            </span>
           </div>
           <div className="sg-input-row">
             <input
@@ -281,6 +281,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
             <span className="sg-input-suffix">TON</span>
             <button className="sg-input-btn" onClick={half} type="button">½</button>
             <button className="sg-input-btn" onClick={double} type="button">2×</button>
+            <button className="sg-input-btn" onClick={maxBet} type="button">Max</button>
           </div>
         </div>
 

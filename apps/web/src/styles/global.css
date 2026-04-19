@@ -748,14 +748,20 @@ input, textarea { font-family: inherit; }
   margin-bottom: 8px;
 }
 .history-mult {
-  background: var(--blue);
-  color: #fff;
-  border-radius: 999px;
+  background: var(--stake-green);
+  color: var(--stake-bg);
+  border-radius: var(--rr-sm);
   padding: 3px 10px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
+.history-mult.is-loss {
+  background: var(--stake-red);
+  color: #fff;
+}
+.history-amount.is-win { color: var(--stake-green); }
+.history-amount.is-loss { color: var(--stake-text-3); }
 .history-meta {
   font-size: 11px;
   color: var(--t3);
@@ -1731,7 +1737,7 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   top: 0; bottom: 0;
   background: var(--stake-green);
   border-radius: 5px;
-  transition: left var(--t-fast), right var(--t-fast), width var(--t-fast);
+  /* No transition — fill tracks the slider in realtime during drag. */
 }
 .dice-slider-pin {
   position: absolute;
@@ -1743,17 +1749,23 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   transform: translateX(-50%);
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3);
   pointer-events: none;
-  transition: left var(--t-fast);
+  /* No transition — pin tracks the slider in realtime during drag. */
 }
 
 /* Landing marker — diamond on the track + floating bubble showing the roll.
-   Position is animated per-frame from JS during the roll (no CSS transition). */
+   Appears instantly at the landing position with a tiny scale-in pop. */
 .dice-roll-marker {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 2;
+  animation: dice-marker-pop 260ms cubic-bezier(.2, 1.2, .3, 1);
+}
+@keyframes dice-marker-pop {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(.5); }
+  60%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 .dice-roll-marker::after {
   content: "";
@@ -1764,7 +1776,6 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   transform: rotate(45deg);
   border-radius: 2px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 0 0 2px var(--stake-bg-deep);
-  transition: background var(--t-fast), box-shadow var(--t-fast);
 }
 .dice-roll-marker.is-win::after {
   background: var(--stake-green);
@@ -1912,6 +1923,116 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 .limbo-chip.is-win { color: var(--stake-green); }
 .limbo-chip.is-loss { color: var(--stake-red); }
+
+/* ============ Profile sheet ============ */
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 2px 14px;
+  border-bottom: 1px solid var(--stake-border);
+  margin-bottom: 14px;
+}
+.profile-avatar {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: var(--stake-card-top);
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--stake-text);
+  font-size: 20px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-identity { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.profile-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--stake-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.profile-balance {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--stake-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-kpis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.profile-kpi {
+  background: var(--stake-bg-deep);
+  border-radius: var(--rr-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.profile-kpi-lbl {
+  font-size: 10px;
+  color: var(--stake-text-3);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.profile-kpi-val {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--stake-text);
+  font-variant-numeric: tabular-nums;
+}
+.profile-kpi-val.is-win { color: var(--stake-green); }
+.profile-kpi-val.is-loss { color: var(--stake-red); }
+
+.profile-section-title {
+  font-size: 11px;
+  color: var(--stake-text-3);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 16px 2px 8px;
+}
+.profile-games {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.profile-game-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--stake-bg-deep);
+  border-radius: var(--rr-sm);
+}
+.profile-game-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--stake-text);
+  flex: 1;
+  min-width: 0;
+}
+.profile-game-plays {
+  font-size: 11px;
+  color: var(--stake-text-3);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.profile-game-net {
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.profile-game-net.is-win { color: var(--stake-green); }
+.profile-game-net.is-loss { color: var(--stake-red); }
 
 /* ============ Fairness drawer ============ */
 .fair-body { display: flex; flex-direction: column; gap: 10px; }
