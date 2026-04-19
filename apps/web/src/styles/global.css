@@ -1650,6 +1650,43 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   color: var(--c-text-3);
   cursor: not-allowed;
 }
+.sg-cta-stop {
+  background: var(--c-loss);
+  color: var(--c-bg);
+}
+.sg-cta-stop:hover:not(:disabled) { background: #ef7488; }
+
+/* On-Win / On-Loss field: segmented toggle + % input */
+.sg-on-resolve {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sg-on-resolve-toggle {
+  display: flex;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--rr-sm);
+  overflow: hidden;
+  padding: 2px;
+  gap: 2px;
+}
+.sg-on-resolve-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--c-text-2);
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: calc(var(--rr-sm) - 2px);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--t-sm), color var(--t-sm);
+}
+.sg-on-resolve-btn.is-active { background: var(--c-surface-2); color: var(--c-text); }
+.sg-on-resolve-btn:disabled { opacity: .45; cursor: not-allowed; }
+.sg-on-resolve-pct {}
 
 /* ---------- Dice stage ---------- */
 .dice-stage { padding: 40px 20px 28px; flex-direction: column; }

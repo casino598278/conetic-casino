@@ -8,6 +8,7 @@ import {
 import { api, ApiError } from "../../net/api";
 import { haptic, notify } from "../../telegram/initWebApp";
 import { useWalletStore } from "../../state/walletStore";
+import { AutoPanel, type AutoBetResult } from "./AutoPanel";
 
 const NANO = 1_000_000_000n;
 const HISTORY_MAX = 10;
@@ -51,7 +52,9 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
   const [target, setTarget] = useState(2);
   const [targetStr, setTargetStr] = useState("2.00");
   const [amount, setAmount] = useState("1");
+  const [mode, setMode] = useState<"manual" | "auto">("manual");
   const [busy, setBusy] = useState(false);
+  const [rolling, setRolling] = useState(false);
   const [display, setDisplay] = useState(1.0);
   const [settled, setSettled] = useState<{ result: number; win: boolean } | null>(null);
   const [lastPayout, setLastPayout] = useState<string | null>(null);
@@ -78,12 +81,11 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
     setTargetStr(n.toFixed(2));
   };
 
-  const play = async () => {
-    const ton = parseFloat(amount);
-    if (!Number.isFinite(ton) || ton <= 0) { onError?.("Enter a bet amount"); return; }
-    const nano = tonToNano(ton);
-    if (nano > balance) { onError?.("Insufficient balance"); notify("error"); return; }
-    if (busy) return;
+  // Hits the server, triggers the count-up animation, updates balance.
+  // Resolves as soon as the server responds — the caller can start waiting
+  // for the animation to finish via the `rolling` flag or a fixed settle
+  // delay. Used by both the Manual Bet button and the Auto loop.
+  const placeBet = async (nano: bigint): Promise<AutoBetResult> => {
     setBusy(true);
     setSettled(null);
     setLastPayout(null);
@@ -95,10 +97,33 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
       });
       animate(r.outcome.result, r.outcome.win, r.payoutNano);
       setBalance(BigInt(r.newBalanceNano));
+      // Flip out of the API-waiting state as soon as the response lands;
+      // `rolling` remains true while the count-up plays.
+      setBusy(false);
+      // AutoPanel needs betNano; we don't get it back from Limbo's response,
+      // so reconstruct from the input (server echoes it anyway).
+      return {
+        win: r.outcome.win,
+        betNano: nano,
+        payoutNano: BigInt(r.payoutNano),
+      };
+    } catch (err) {
+      setBusy(false);
+      throw err;
+    }
+  };
+
+  const play = async () => {
+    const ton = parseFloat(amount);
+    if (!Number.isFinite(ton) || ton <= 0) { onError?.("Enter a bet amount"); return; }
+    const nano = tonToNano(ton);
+    if (nano > balance) { onError?.("Insufficient balance"); notify("error"); return; }
+    if (busy || rolling) return;
+    try {
+      await placeBet(nano);
     } catch (err: unknown) {
       notify("error");
       onError?.(humanizeBetError(err));
-      setBusy(false);
     }
   };
 
@@ -123,15 +148,12 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
 
   const animate = (finalResult: number, finalWin: boolean, payout: string) => {
     if (animRef.current) cancelAnimationFrame(animRef.current);
-    // Fast count-up to the crash result, capped at 1s so the user never
-    // waits on the animation. Scales with result so 10× feels faster to
-    // arrive at than 1000×, matching Stake's Limbo.
     const DUR = Math.min(1000, 420 + Math.log10(Math.max(1, finalResult)) * 180);
     const start = performance.now();
     const startVal = 1;
+    setRolling(true);
     const step = (t: number) => {
       const p = Math.min(1, (t - start) / DUR);
-      // Ease-out cubic
       const eased = 1 - Math.pow(1 - p, 3);
       const v = startVal + (finalResult - startVal) * eased;
       setDisplay(v);
@@ -141,7 +163,7 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
         setDisplay(finalResult);
         setSettled({ result: finalResult, win: finalWin });
         setLastPayout(payout);
-        setBusy(false);
+        setRolling(false);
         setHistory((prev) => [{ result: finalResult, win: finalWin }, ...prev].slice(0, HISTORY_MAX));
         notify(finalWin ? "success" : "warning");
         animRef.current = null;
@@ -168,10 +190,10 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
     : display >= 10 ? display.toFixed(2)
     : display.toFixed(2);
 
-  const winClass = busy ? "" : settled?.win === true ? "is-win" : settled?.win === false ? "is-loss" : "";
-  const subClass = busy ? "" : winClass;
+  const winClass = (busy || rolling) ? "" : settled?.win === true ? "is-win" : settled?.win === false ? "is-loss" : "";
+  const subClass = (busy || rolling) ? "" : winClass;
 
-  const subText = busy
+  const subText = (busy || rolling)
     ? "Rolling…"
     : settled?.win && lastPayout
       ? `+${fmtTon(BigInt(lastPayout) - tonToNano(parseFloat(amount) || 0))}`
@@ -179,7 +201,7 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
         ? "Loss"
         : "Place a bet";
 
-  const betReady = !busy && (parseFloat(amount) || 0) > 0;
+  const betReady = !busy && !rolling && (parseFloat(amount) || 0) > 0;
 
   return (
     <div className="sg-screen">
@@ -217,6 +239,23 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
       </div>
 
       <div className="sg-panel">
+        <div className="sg-mode">
+          <button
+            type="button"
+            className={`sg-mode-btn ${mode === "manual" ? "is-active" : ""}`}
+            onClick={() => setMode("manual")}
+          >
+            Manual
+          </button>
+          <button
+            type="button"
+            className={`sg-mode-btn ${mode === "auto" ? "is-active" : ""}`}
+            onClick={() => setMode("auto")}
+          >
+            Auto
+          </button>
+        </div>
+
         <div className="sg-two-col">
           <div className="sg-field">
             <div className="sg-field-head">
@@ -252,32 +291,46 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
           </div>
         </div>
 
-        <div className="sg-field">
-          <div className="sg-field-head">
-            <span>Bet amount</span>
-            <span className="sg-field-head-val">
-              Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(2).replace(/\.?0+$/, "") : "0"}
-            </span>
-          </div>
-          <div className="sg-input-row">
-            <input
-              className="sg-input"
-              type="number"
-              inputMode="decimal"
-              step="0.1"
-              min="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-            <button className="sg-input-btn" onClick={half} type="button">½</button>
-            <button className="sg-input-btn" onClick={double} type="button">2×</button>
-            <button className="sg-input-btn" onClick={maxBet} type="button">Max</button>
-          </div>
-        </div>
+        {mode === "manual" ? (
+          <>
+            <div className="sg-field">
+              <div className="sg-field-head">
+                <span>Bet amount</span>
+                <span className="sg-field-head-val">
+                  Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(2).replace(/\.?0+$/, "") : "0"}
+                </span>
+              </div>
+              <div className="sg-input-row">
+                <input
+                  className="sg-input"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.1"
+                  min="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+                <button className="sg-input-btn" onClick={half} type="button">½</button>
+                <button className="sg-input-btn" onClick={double} type="button">2×</button>
+                <button className="sg-input-btn" onClick={maxBet} type="button">Max</button>
+              </div>
+            </div>
 
-        <button className="sg-cta" onClick={play} disabled={!betReady} type="button">
-          {busy ? "Rolling…" : "Bet"}
-        </button>
+            <button className="sg-cta" onClick={play} disabled={!betReady} type="button">
+              {busy || rolling ? "Rolling…" : "Bet"}
+            </button>
+          </>
+        ) : (
+          <AutoPanel
+            balance={balance}
+            settleDelayMs={900}
+            initialAmount={amount}
+            onAmountChange={setAmount}
+            placeBet={placeBet}
+            onError={(m) => onError?.(m)}
+            locked={rolling}
+          />
+        )}
       </div>
     </div>
   );

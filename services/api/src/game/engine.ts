@@ -144,10 +144,7 @@ export class GameEngine extends EventEmitter {
     }
 
     if (!checkBetRate(input.userId)) return { ok: false, error: "phase_closed" };
-    const minNano = BigInt(Math.floor(config.MIN_BET_TON * 1e9));
-    const maxNano = BigInt(Math.floor(config.MAX_BET_TON * 1e9));
-    if (input.amountNano < minNano) return { ok: false, error: "below_min" };
-    if (input.amountNano > maxNano) return { ok: false, error: "above_max" };
+    if (input.amountNano <= 0n) return { ok: false, error: "below_min" };
 
     try {
       txn(() => {

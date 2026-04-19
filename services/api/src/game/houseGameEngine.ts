@@ -10,7 +10,6 @@ import { addWager } from "../db/repo/leaderboard.js";
 import {
   consumeNonce,
   insertPlay,
-  userNetWinSince,
   type HouseSeedRow,
 } from "../db/repo/houseGames.js";
 
@@ -92,18 +91,10 @@ export async function playHouseGame<Params, Outcome>(args: {
 
   if (!validate(params)) return { ok: false, error: "invalid_params" };
   if (!checkBetRate(userId)) return { ok: false, error: "rate_limited" };
+  if (betNano <= 0n) return { ok: false, error: "invalid_params" };
 
-  const minNano = tonToNano(config.MIN_BET_TON);
-  const maxNano = tonToNano(config.MAX_BET_TON);
-  if (betNano < minNano) return { ok: false, error: "below_min" };
-  if (betNano > maxNano) return { ok: false, error: "above_max" };
-
-  // Daily net-win cap. If they're already at the cap, refuse.
-  const dayAgo = Date.now() - 24 * 3600 * 1000;
-  const net = userNetWinSince(userId, dayAgo);
-  const dailyCap = tonToNano(config.MAX_DAILY_WIN_TON);
-  if (net >= dailyCap) return { ok: false, error: "daily_limit" };
-
+  // All betting limits removed per owner's direction. Rate-limit + balance
+  // check (enforced by the debit below) are the only guards left.
   const { seeds, nonceUsed } = consumeNonce(userId);
 
   const result = await compute({
@@ -113,15 +104,8 @@ export async function playHouseGame<Params, Outcome>(args: {
     params,
   });
 
-  const { outcome, multiplier, maxMultiplier } = result;
-
-  // Max-win guard: check what this bet could have paid at worst case.
-  const maxPayoutNano = mulBigInt(betNano, maxMultiplier);
-  const maxProfitNano = maxPayoutNano > betNano ? maxPayoutNano - betNano : 0n;
-  const winCap = tonToNano(config.MAX_WIN_TON);
-  if (maxProfitNano > winCap) {
-    return { ok: false, error: "max_win_exceeded", meta: { maxWinTon: config.MAX_WIN_TON } };
-  }
+  const { outcome, multiplier, maxMultiplier: _ignore } = result;
+  void _ignore;
 
   const payoutNano = multiplier > 0 ? mulBigInt(betNano, multiplier) : 0n;
 

@@ -9,6 +9,7 @@ import {
 import { api, ApiError } from "../../net/api";
 import { haptic, notify } from "../../telegram/initWebApp";
 import { useWalletStore } from "../../state/walletStore";
+import { AutoPanel, type AutoBetResult } from "./AutoPanel";
 
 const NANO = 1_000_000_000n;
 
@@ -62,6 +63,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
   const [target, setTarget] = useState(50.5);
   const [over, setOver] = useState(true);
   const [amount, setAmount] = useState("1");
+  const [mode, setMode] = useState<"manual" | "auto">("manual");
   const [busy, setBusy] = useState(false);
   // Separate from `busy` so the Bet button stays disabled during the roll
   // animation even after the API call has returned.
@@ -100,12 +102,9 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
     }
   };
 
-  const play = async () => {
-    const ton = parseFloat(amount);
-    if (!Number.isFinite(ton) || ton <= 0) { onError?.("Enter a bet amount"); return; }
-    const nano = tonToNano(ton);
-    if (nano > balance) { onError?.("Insufficient balance"); notify("error"); return; }
-    if (busy) return;
+  // Hits the server, triggers the roll animation, updates balance + result
+  // state. Used by both the Manual Bet button and the Auto loop.
+  const placeBet = async (nano: bigint): Promise<AutoBetResult> => {
     setBusy(true);
     haptic("light");
     try {
@@ -117,11 +116,27 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
       setLastPayout(r.payoutNano);
       setBalance(BigInt(r.newBalanceNano));
       notify(r.outcome.win ? "success" : "warning");
+      return {
+        win: r.outcome.win,
+        betNano: BigInt(r.betNano),
+        payoutNano: BigInt(r.payoutNano),
+      };
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const play = async () => {
+    const ton = parseFloat(amount);
+    if (!Number.isFinite(ton) || ton <= 0) { onError?.("Enter a bet amount"); return; }
+    const nano = tonToNano(ton);
+    if (nano > balance) { onError?.("Insufficient balance"); notify("error"); return; }
+    if (busy) return;
+    try {
+      await placeBet(nano);
     } catch (err: unknown) {
       notify("error");
       onError?.(humanizeBetError(err));
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -153,7 +168,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
     const startRoll = roll ?? 0;
     const finalPos = Math.min(100, Math.max(0, finalRoll));
     const start = performance.now();
-    const DUR = 550;
+    const DUR = 400;
     setRolling(true);
     // Reset colours so mid-animation the marker reads neutral, not last-win.
     setMarkerWin(null);
@@ -274,6 +289,23 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
       </div>
 
       <div className="sg-panel">
+        <div className="sg-mode">
+          <button
+            type="button"
+            className={`sg-mode-btn ${mode === "manual" ? "is-active" : ""}`}
+            onClick={() => setMode("manual")}
+          >
+            Manual
+          </button>
+          <button
+            type="button"
+            className={`sg-mode-btn ${mode === "auto" ? "is-active" : ""}`}
+            onClick={() => setMode("auto")}
+          >
+            Auto
+          </button>
+        </div>
+
         <div className="dice-slider-box">
           <div className="dice-slider-track">
             <div className="dice-slider-fill" style={fillStyle} />
@@ -361,32 +393,46 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
           </div>
         </div>
 
-        <div className="sg-field">
-          <div className="sg-field-head">
-            <span>Bet amount</span>
-            <span className="sg-field-head-val">
-              Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(2).replace(/\.?0+$/, "") : "0"}
-            </span>
-          </div>
-          <div className="sg-input-row">
-            <input
-              className="sg-input"
-              type="number"
-              inputMode="decimal"
-              step="0.1"
-              min="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-            <button className="sg-input-btn" onClick={half} type="button">½</button>
-            <button className="sg-input-btn" onClick={double} type="button">2×</button>
-            <button className="sg-input-btn" onClick={maxBet} type="button">Max</button>
-          </div>
-        </div>
+        {mode === "manual" ? (
+          <>
+            <div className="sg-field">
+              <div className="sg-field-head">
+                <span>Bet amount</span>
+                <span className="sg-field-head-val">
+                  Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(2).replace(/\.?0+$/, "") : "0"}
+                </span>
+              </div>
+              <div className="sg-input-row">
+                <input
+                  className="sg-input"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.1"
+                  min="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+                <button className="sg-input-btn" onClick={half} type="button">½</button>
+                <button className="sg-input-btn" onClick={double} type="button">2×</button>
+                <button className="sg-input-btn" onClick={maxBet} type="button">Max</button>
+              </div>
+            </div>
 
-        <button className="sg-cta" onClick={play} disabled={!betReady} type="button">
-          {busy || rolling ? "Rolling…" : "Bet"}
-        </button>
+            <button className="sg-cta" onClick={play} disabled={!betReady} type="button">
+              {busy || rolling ? "Rolling…" : "Bet"}
+            </button>
+          </>
+        ) : (
+          <AutoPanel
+            balance={balance}
+            settleDelayMs={500}
+            initialAmount={amount}
+            onAmountChange={setAmount}
+            placeBet={placeBet}
+            onError={(m) => onError?.(m)}
+            locked={rolling}
+          />
+        )}
       </div>
     </div>
   );
