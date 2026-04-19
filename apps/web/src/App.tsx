@@ -4,16 +4,17 @@ import { BetBar } from "./ui/BetBar";
 import { PlayersList } from "./ui/PlayersList";
 import { WalletSheet } from "./ui/WalletSheet";
 import { WinScreen } from "./ui/WinScreen";
-import { GamePills } from "./ui/GamePills";
 import { HistoryModal } from "./ui/HistoryModal";
 import { Leaderboard } from "./ui/Leaderboard";
 import { MiningGame } from "./ui/MiningGame";
-import { SingleLobby } from "./ui/house/SingleLobby";
 import { Dice } from "./ui/house/Dice";
 import { FairnessDrawer } from "./ui/house/FairnessDrawer";
+import { AppShell } from "./ui/shell/AppShell";
+import { BrowseHome } from "./ui/shell/BrowseHome";
 import { useMiningStore } from "./state/miningStore";
 import { useLobbyStore } from "./state/lobbyStore";
 import { useWalletStore } from "./state/walletStore";
+import { useNavStore } from "./state/navStore";
 import { api, login } from "./net/api";
 import { getSocket } from "./net/socket";
 import { getInitData } from "./telegram/initWebApp";
@@ -35,8 +36,6 @@ function useCountdown(endsAt: number | null): string {
   }, []);
   if (endsAt == null) return "—";
   const ms = Math.max(0, endsAt - now);
-  // Ceiling so the UI shows "00:01" right until the round actually starts,
-  // instead of sitting at "00:00" during the last half-second.
   const s = Math.max(1, Math.ceil(ms / 1000));
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
@@ -56,11 +55,14 @@ export default function App() {
   const setUser = useWalletStore((s) => s.setUser);
   const setBalance = useWalletStore((s) => s.setBalance);
 
+  const tab = useNavStore((s) => s.tab);
+  const activeGame = useNavStore((s) => s.activeGame);
+  const closeGame = useNavStore((s) => s.closeGame);
+  const setTab = useNavStore((s) => s.setTab);
+
   const [showWallet, setShowWallet] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [activeGame, setActiveGame] = useState<"arena" | "mining" | "single">("arena");
-  const [singleGame, setSingleGame] = useState<string | null>(null);
   const [fairnessOpen, setFairnessOpen] = useState(false);
 
   const miningSnap = useMiningStore((s) => s.snapshot);
@@ -73,9 +75,8 @@ export default function App() {
   const clearMiningLive = useMiningStore((s) => s.clearLive);
   const [authError, setAuthError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [wsConnected, setWsConnected] = useState(false);
+  const [, setWsConnected] = useState(false);
   const [winScreenVisible, setWinScreenVisible] = useState(false);
-  const [pillsRefreshKey, setPillsRefreshKey] = useState(0);
 
   // Version watch — hard-reload if backend deployed a new build.
   useEffect(() => {
@@ -146,8 +147,22 @@ export default function App() {
     })();
   }, []);
 
+  // When bottom-nav tab changes to wallet/bets, open the matching sheet and
+  // bounce the tab back to "browse" so reopening the sheet works.
+  useEffect(() => {
+    if (tab === "wallet") {
+      setShowWallet(true);
+      setTab("browse");
+    } else if (tab === "bets") {
+      setShowHistory(true);
+      setTab("browse");
+    } else if (tab === "menu") {
+      setShowLeaderboard(true);
+      setTab("browse");
+    }
+  }, [tab, setTab]);
+
   const countdown = useCountdown(snapshot?.countdownEndsAt ?? null);
-  // isLive if EITHER the snapshot says LIVE or we have a trajectory seed (race-safe).
   const isLive = !!liveSeed || snapshot?.phase === "LIVE";
   const phase = snapshot?.phase ?? "WAITING";
   const canBet = phase === "WAITING" || phase === "COUNTDOWN";
@@ -159,8 +174,6 @@ export default function App() {
     setTimeout(() => setToast(null), 2500);
   };
 
-  // The server only emits RoundResult once the animation has finished, so we
-  // just wait a short beat for the zoom-to-winner to play out in the arena.
   useEffect(() => {
     if (!lastResult) {
       setWinScreenVisible(false);
@@ -168,7 +181,6 @@ export default function App() {
     }
     const t = setTimeout(() => {
       setWinScreenVisible(true);
-      setPillsRefreshKey((k) => k + 1);
     }, 1200);
     return () => clearTimeout(t);
   }, [lastResult]);
@@ -189,49 +201,39 @@ export default function App() {
     );
   }
 
-  return (
-    <div className="app">
-      <header className="header">
-        <button
-          className="header-icon-btn"
-          onClick={() => setShowHistory(true)}
-          aria-label="Game history"
-          type="button"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-            <line x1="16" y1="2" x2="16" y2="6" />
-            <line x1="8" y1="2" x2="8" y2="6" />
-            <line x1="3" y1="10" x2="21" y2="10" />
-          </svg>
-        </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button className="balance-pill" onClick={() => setShowWallet(true)}>
-            {fmtTon(balance.toString())} TON
-          </button>
-        </div>
-      </header>
+  const renderGame = () => {
+    if (tab === "favourites") {
+      return <div className="stake-empty"><p>No favourites yet.</p></div>;
+    }
 
-      <GamePills refreshKey={pillsRefreshKey} onOpenHistory={() => setShowHistory(true)} />
+    if (!activeGame) return <BrowseHome />;
 
-      <div className="game-switch">
-        <button className={activeGame === "arena" ? "active" : ""} onClick={() => { setActiveGame("arena"); setSingleGame(null); }}>Arena</button>
-        <button className={activeGame === "mining" ? "active" : ""} onClick={() => { setActiveGame("mining"); setSingleGame(null); }}>Mining</button>
-        <button className={activeGame === "single" ? "active" : ""} onClick={() => { setActiveGame("single"); }}>Singleplayer</button>
-      </div>
+    const back = (
+      <button type="button" className="stake-game-back" onClick={closeGame}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+        Back
+      </button>
+    );
 
-      {activeGame === "single" ? (
-        singleGame === "dice" ? (
+    if (activeGame === "dice") {
+      return (
+        <>
+          {back}
           <Dice
-            onBack={() => setSingleGame(null)}
+            onBack={closeGame}
             onError={showToast}
             onOpenFairness={() => setFairnessOpen(true)}
           />
-        ) : (
-          <SingleLobby onPick={(g) => setSingleGame(g)} />
-        )
-      ) : activeGame === "arena" ? (
+        </>
+      );
+    }
+
+    if (activeGame === "arena") {
+      return (
         <>
+          {back}
           <div className="pot-row">
             <div>Total <strong>{fmtTon(pot)}</strong></div>
             <div>
@@ -267,22 +269,37 @@ export default function App() {
 
           <BetBar disabled={!canBet} onError={(m) => showToast(m)} />
         </>
-      ) : (
-        <MiningGame
-          snapshot={miningSnap}
-          trajectorySeed={miningSeed}
-          liveStartedAt={miningStartedAt}
-          result={miningResult}
-          currentUserId={user?.id ?? null}
-          onError={(m) => showToast(m)}
-        />
-      )}
+      );
+    }
 
-      <div className="tabs">
-        <button className="active">Arena</button>
-        <button onClick={() => setShowLeaderboard(true)}>Leaderboard</button>
-        <button onClick={() => setShowWallet(true)}>Wallet</button>
-      </div>
+    if (activeGame === "mining") {
+      return (
+        <>
+          {back}
+          <MiningGame
+            snapshot={miningSnap}
+            trajectorySeed={miningSeed}
+            liveStartedAt={miningStartedAt}
+            result={miningResult}
+            currentUserId={user?.id ?? null}
+            onError={(m) => showToast(m)}
+          />
+        </>
+      );
+    }
+
+    return <BrowseHome />;
+  };
+
+  return (
+    <>
+      <AppShell
+        onOpenWallet={() => setShowWallet(true)}
+        onOpenHistory={() => setShowHistory(true)}
+        onOpenMenu={() => setShowLeaderboard(true)}
+      >
+        {renderGame()}
+      </AppShell>
 
       {showWallet && <WalletSheet onClose={() => setShowWallet(false)} />}
       {showHistory && <HistoryModal onClose={() => setShowHistory(false)} />}
@@ -308,6 +325,9 @@ export default function App() {
       })()}
 
       {toast && <div className="toast">{toast}</div>}
-    </div>
+
+      {/* balance used by hidden re-render trigger; silence unused warn in prod */}
+      <span style={{ display: "none" }}>{balance.toString()}</span>
+    </>
   );
 }

@@ -1,0 +1,39 @@
+/* Stake.com-inspired palette + spacing scale.
+   Aliased onto the legacy --blue/--s1/etc vars in global.css so existing
+   components keep working while the shell adopts the new look. */
+
+:root {
+  /* Surfaces */
+  --stake-bg:       #0f212e;
+  --stake-bg-deep:  #0b1923;
+  --stake-card:     #1a2c38;
+  --stake-card-hi:  #213743;
+  --stake-border:   #2f4553;
+  --stake-border-hi:#3d5667;
+
+  /* Text */
+  --stake-text:     #ffffff;
+  --stake-text-2:   #b1bad3;
+  --stake-text-3:   #7f8ea8;
+  --stake-muted:    #556a7d;
+
+  /* Accents */
+  --stake-green:    #00e701;
+  --stake-green-d:  #00c301;
+  --stake-green-g:  rgba(0, 231, 1, 0.14);
+  --stake-green-glow: rgba(0, 231, 1, 0.35);
+  --stake-red:      #ff4d5e;
+  --stake-yellow:   #ffb636;
+  --stake-blue:     #3bc8ff;
+
+  /* Layout */
+  --shell-top-h:    56px;
+  --shell-bot-h:    64px;
+  --shell-pad-x:    12px;
+
+  /* Radii */
+  --rr-sm: 8px;
+  --rr:    12px;
+  --rr-lg: 16px;
+  --rr-pill: 999px;
+}
