@@ -1561,7 +1561,7 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 .sg-mode-btn.is-active { background: var(--c-surface-2); color: var(--c-text); }
 .sg-mode-btn:disabled { opacity: .4; cursor: not-allowed; }
 
-.sg-field { display: flex; flex-direction: column; gap: 6px; }
+.sg-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .sg-field-head {
   display: flex;
   justify-content: space-between;
@@ -1580,6 +1580,7 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   border-radius: var(--rr);
   overflow: hidden;
   transition: border-color var(--t-sm);
+  min-width: 0;
 }
 .sg-input-row:focus-within { border-color: var(--c-accent); }
 .sg-input {
@@ -1629,7 +1630,16 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 .sg-input-btn:hover { background: var(--c-surface-2); color: var(--c-text); }
 
-.sg-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sg-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  min-width: 0;
+}
+/* Children of the two-col grid must be allowed to shrink below their
+   content width so deep inputs (% fields, numeric inputs) don't push
+   the grid out to the right. */
+.sg-two-col > * { min-width: 0; }
 
 .sg-cta {
   background: var(--c-accent);
@@ -1656,37 +1666,41 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 .sg-cta-stop:hover:not(:disabled) { background: #ef7488; }
 
-/* On-Win / On-Loss field: segmented toggle + % input */
+/* On-Win / On-Loss field: segmented toggle + % input stacked vertically
+   so they don't fight for horizontal room in the 2-col grid. */
 .sg-on-resolve {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 .sg-on-resolve-toggle {
   display: flex;
   background: var(--c-bg);
   border: 1px solid var(--c-border);
   border-radius: var(--rr-sm);
-  overflow: hidden;
   padding: 2px;
   gap: 2px;
+  min-width: 0;
 }
 .sg-on-resolve-btn {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   background: transparent;
   border: none;
   color: var(--c-text-2);
   padding: 6px 0;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   border-radius: calc(var(--rr-sm) - 2px);
   cursor: pointer;
   font-family: inherit;
   transition: background var(--t-sm), color var(--t-sm);
+  white-space: nowrap;
 }
 .sg-on-resolve-btn.is-active { background: var(--c-surface-2); color: var(--c-text); }
 .sg-on-resolve-btn:disabled { opacity: .45; cursor: not-allowed; }
-.sg-on-resolve-pct {}
+.sg-on-resolve-pct { min-width: 0; }
 
 /* ---------- Dice stage ---------- */
 .dice-stage { padding: 40px 20px 28px; flex-direction: column; }

@@ -273,7 +273,6 @@ export function Limbo({ onBack, onError, onOpenFairness }: Props) {
                 onChange={(e) => onTargetChange(e.target.value)}
                 onBlur={onTargetBlur}
               />
-              <span className="sg-input-suffix">×</span>
             </div>
           </div>
           <div className="sg-field">
