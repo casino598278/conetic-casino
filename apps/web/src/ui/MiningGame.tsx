@@ -358,7 +358,7 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
                 {!p.photoUrl && (p.firstName ?? "?").slice(0, 2).toUpperCase()}
               </span>
               <span className="mining-pl-name">{p.username ? `@${p.username}` : p.firstName}</span>
-              <span className="mining-pl-pct">{pct.toFixed(1)}%</span>
+              <span className="mining-pl-pct">{fmtTon(p.stakeNano)} TON · {pct.toFixed(1)}%</span>
               <span className="mining-pl-gems">{points} / {MINING.TARGET_POINTS}</span>
             </div>
           );
