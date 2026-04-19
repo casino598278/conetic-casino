@@ -8,6 +8,9 @@ import { GamePills } from "./ui/GamePills";
 import { HistoryModal } from "./ui/HistoryModal";
 import { Leaderboard } from "./ui/Leaderboard";
 import { MiningGame } from "./ui/MiningGame";
+import { SingleLobby } from "./ui/house/SingleLobby";
+import { Dice } from "./ui/house/Dice";
+import { FairnessDrawer } from "./ui/house/FairnessDrawer";
 import { useMiningStore } from "./state/miningStore";
 import { useLobbyStore } from "./state/lobbyStore";
 import { useWalletStore } from "./state/walletStore";
@@ -56,7 +59,9 @@ export default function App() {
   const [showWallet, setShowWallet] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [activeGame, setActiveGame] = useState<"arena" | "mining">("arena");
+  const [activeGame, setActiveGame] = useState<"arena" | "mining" | "single">("arena");
+  const [singleGame, setSingleGame] = useState<string | null>(null);
+  const [fairnessOpen, setFairnessOpen] = useState(false);
 
   const miningSnap = useMiningStore((s) => s.snapshot);
   const miningSeed = useMiningStore((s) => s.liveTrajectorySeed);
@@ -210,11 +215,22 @@ export default function App() {
       <GamePills refreshKey={pillsRefreshKey} onOpenHistory={() => setShowHistory(true)} />
 
       <div className="game-switch">
-        <button className={activeGame === "arena" ? "active" : ""} onClick={() => setActiveGame("arena")}>Arena</button>
-        <button className={activeGame === "mining" ? "active" : ""} onClick={() => setActiveGame("mining")}>Mining</button>
+        <button className={activeGame === "arena" ? "active" : ""} onClick={() => { setActiveGame("arena"); setSingleGame(null); }}>Arena</button>
+        <button className={activeGame === "mining" ? "active" : ""} onClick={() => { setActiveGame("mining"); setSingleGame(null); }}>Mining</button>
+        <button className={activeGame === "single" ? "active" : ""} onClick={() => { setActiveGame("single"); }}>Singleplayer</button>
       </div>
 
-      {activeGame === "arena" ? (
+      {activeGame === "single" ? (
+        singleGame === "dice" ? (
+          <Dice
+            onBack={() => setSingleGame(null)}
+            onError={showToast}
+            onOpenFairness={() => setFairnessOpen(true)}
+          />
+        ) : (
+          <SingleLobby onPick={(g) => setSingleGame(g)} />
+        )
+      ) : activeGame === "arena" ? (
         <>
           <div className="pot-row">
             <div>Total <strong>{fmtTon(pot)}</strong></div>
@@ -271,6 +287,7 @@ export default function App() {
       {showWallet && <WalletSheet onClose={() => setShowWallet(false)} />}
       {showHistory && <HistoryModal onClose={() => setShowHistory(false)} />}
       {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
+      <FairnessDrawer open={fairnessOpen} onClose={() => setFairnessOpen(false)} />
 
       {winScreenVisible && lastResult && snapshot && (() => {
         const winnerPlayer = snapshot.players.find((p) => p.userId === lastResult.winnerUserId);

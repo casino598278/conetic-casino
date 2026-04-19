@@ -16,6 +16,7 @@ import { registerWalletRoutes } from "./http/routes.wallet.js";
 import { registerRoundRoutes } from "./http/routes.rounds.js";
 import { registerAvatarRoutes } from "./http/routes.avatar.js";
 import { registerMiningRoutes } from "./http/routes.mining.js";
+import { registerSingleRoutes } from "./http/routes.single.js";
 import { engine } from "./game/engine.js";
 import { miningEngine } from "./game/miningEngine.js";
 import { attachGateway } from "./ws/gateway.js";
@@ -77,6 +78,7 @@ async function main() {
       await registerRoundRoutes(api);
       await registerAvatarRoutes(api);
       await registerMiningRoutes(api);
+      await registerSingleRoutes(api);
     },
     { prefix: "/api" },
   );

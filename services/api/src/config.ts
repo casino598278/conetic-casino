@@ -24,6 +24,10 @@ const Schema = z.object({
   MAX_BET_TON: z.coerce.number().default(100),
   MAX_DAILY_WITHDRAW_TON: z.coerce.number().default(500),
   WITHDRAW_COOLDOWN_SECONDS: z.coerce.number().default(60),
+
+  // Singleplayer / house games
+  MAX_WIN_TON: z.coerce.number().default(25),          // absolute max profit per bet
+  MAX_DAILY_WIN_TON: z.coerce.number().default(500),   // per-user daily net-win cap
 });
 
 const parsed = Schema.safeParse(process.env);

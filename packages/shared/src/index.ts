@@ -6,3 +6,4 @@ export * from "./dto.js";
 export * from "./wedges.js";
 export * from "./trajectory.js";
 export * from "./mining.js";
+export * from "./games/index.js";
