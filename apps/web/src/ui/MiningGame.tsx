@@ -73,14 +73,30 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
   const [livePoints, setLivePoints] = useState<number[]>([]);
   const sortedPlayers = useMemo(() => [...players].sort((a, b) => (a.userId < b.userId ? -1 : 1)), [players]);
 
+  const [hideCanvas, setHideCanvas] = useState(false);
+
   // Reset local round state when a new round starts (server clears trajectorySeed on commit).
   useEffect(() => {
     if (trajectorySeed || result) return;
     setLivePoints([]);
+    setHideCanvas(false);
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
   }, [trajectorySeed, result]);
+
+  // After a winner is resolved, clear the canvas 3s later.
+  useEffect(() => {
+    if (!result) return;
+    const t = setTimeout(() => {
+      setHideCanvas(true);
+      setLivePoints([]);
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [result]);
 
   // Preload avatar images
   useEffect(() => {
@@ -318,6 +334,7 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
         </div>
       </div>
 
+      <div className="mining-scroll">
       <div className="mining-legend">
         <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.emerald.color.toString(16).padStart(6, "0")}` }} />{GEMS.emerald.value}</span>
         <span className="mining-legend-item"><span className="mining-legend-dot" style={{ background: `#${GEMS.sapphire.color.toString(16).padStart(6, "0")}` }} />{GEMS.sapphire.value}</span>
@@ -333,7 +350,7 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
           height={400}
           className="mining-canvas"
         />
-        {!isLive && (
+        {(!isLive || hideCanvas) && (
           <div style={{
             position: "absolute", inset: 0, display: "flex",
             alignItems: "center", justifyContent: "center",
@@ -359,10 +376,11 @@ export function MiningGame({ snapshot, trajectorySeed, liveStartedAt, result, cu
               </span>
               <span className="mining-pl-name">{p.username ? `@${p.username}` : p.firstName}</span>
               <span className="mining-pl-pct">{fmtTon(p.stakeNano)} TON · {pct.toFixed(1)}%</span>
-              <span className="mining-pl-gems">{points} / {MINING.TARGET_POINTS}</span>
+              <span className="mining-pl-gems">{Math.min(points, MINING.TARGET_POINTS)} / {MINING.TARGET_POINTS}</span>
             </div>
           );
         })}
+      </div>
       </div>
 
       <div className="bet-bar">
