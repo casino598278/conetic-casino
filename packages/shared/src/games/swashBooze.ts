@@ -485,8 +485,10 @@ export async function playSwashBooze(
         initialScatters: r.initialScatters,
       });
       fsMult += spinWin;
-      // Retrigger: 3+ scatters in this FS's initial drop → +5 more spins.
-      if (r.initialScatters >= SWASH_FS_RETRIGGER_SCATTERS) {
+      // Retriggers are disabled for the bought bonus (buy = exactly 10 spins).
+      // For a naturally triggered bonus, 3+ scatters in this FS's initial drop
+      // award +5 more spins — matches Sweet Bonanza.
+      if (params.mode !== "buy" && r.initialScatters >= SWASH_FS_RETRIGGER_SCATTERS) {
         spinsRemaining += SWASH_FS_RETRIGGER_AWARD;
       }
     }
