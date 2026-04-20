@@ -1,32 +1,10 @@
 import { Bot, InlineKeyboard } from "grammy";
-import { db } from "./db/sqlite.js";
 import { config } from "./config.js";
-import { upsertTelegramUser, getUserById, setDemoMode, isDemo, getDemoBalance, setDemoBalance } from "./db/repo/users.js";
-import { getBalanceNano } from "./db/repo/ledger.js";
+import { upsertTelegramUser, getUserById } from "./db/repo/users.js";
 import { getHotWalletAddressString } from "./wallet/ton/tonAdapter.js";
-
-const ADMIN_TG_ID = 6712382929;
-const TOPUP_COOLDOWN_MS = 30 * 60 * 1000;
-const TOPUP_AMOUNT_NANO = 25n * 1_000_000_000n;
-const topupLastAt = new Map<string, number>();
-
-function fmtDuration(ms: number): string {
-  const totalSec = Math.ceil(ms / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  if (m <= 0) return `${s}s`;
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
 
 let started = false;
 let botInstance: Bot | null = null;
-
-const NANO = 1_000_000_000n;
-function fmtTon(nano: bigint): string {
-  const w = nano / NANO;
-  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 4).replace(/0+$/, "");
-  return f ? `${w}.${f}` : `${w}`;
-}
 
 /**
  * Formerly sent a DM to a user. All unsolicited bot DMs have been disabled
@@ -53,62 +31,14 @@ export function startBot() {
   const openKb = () =>
     new InlineKeyboard().webApp("Open Casino", config.PUBLIC_WEB_URL);
 
-  const openGameKb = (game: string, label: string) =>
-    new InlineKeyboard().webApp(label, `${config.PUBLIC_WEB_URL}?game=${game}`);
-
   bot.command("start", async (ctx) => {
     await ctx.reply(
       "Welcome to Conetic Casino.\n\n" +
-        "Provably fair TON casino. 99% RTP on Originals.\n\n" +
         "Commands:\n" +
-        "/play — Arena (multiplayer)\n" +
-        "/mine — Mining race (multiplayer)\n" +
-        "/dice — Dice\n" +
-        "/limbo — Limbo\n" +
-        "/balance — check your balance\n" +
         "/deposit — get your deposit address\n" +
         "/withdraw — withdraw TON",
       { reply_markup: openKb() },
     );
-  });
-
-  bot.command("play", async (ctx) => {
-    await ctx.reply("Tap to open the arena.", { reply_markup: openKb() });
-  });
-
-  bot.command("mine", async (ctx) => {
-    await ctx.reply("Mining race.", { reply_markup: openGameKb("mining", "Open Mining") });
-  });
-
-  bot.command("dice", async (ctx) => {
-    await ctx.reply("Dice. Roll over or under — 99% RTP.", {
-      reply_markup: openGameKb("dice", "Open Dice"),
-    });
-  });
-
-  bot.command("limbo", async (ctx) => {
-    await ctx.reply("Limbo. Pick a target multiplier — 99% RTP.", {
-      reply_markup: openGameKb("limbo", "Open Limbo"),
-    });
-  });
-
-  bot.command("keno", async (ctx) => {
-    await ctx.reply("Keno. Pick up to 10 cells on the 40-cell grid.", {
-      reply_markup: openGameKb("keno", "Open Keno"),
-    });
-  });
-
-  bot.command("balance", async (ctx) => {
-    const from = ctx.from;
-    if (!from) return;
-    const user = upsertTelegramUser({
-      tgId: from.id,
-      username: from.username ?? null,
-      firstName: from.first_name ?? "Player",
-      photoUrl: null,
-    });
-    const bal = getBalanceNano(user.id);
-    await ctx.reply(`Your balance: ${fmtTon(bal)} TON`);
   });
 
   bot.command("deposit", async (ctx) => {
@@ -142,94 +72,6 @@ export function startBot() {
     );
   });
 
-  bot.command("demo", async (ctx) => {
-    const from = ctx.from;
-    if (!from) return;
-    if (from.id !== ADMIN_TG_ID) {
-      await ctx.reply("Demo mode is admin-only.");
-      return;
-    }
-    const args = (ctx.match ?? "").trim();
-    // Forms: "/demo on" | "/demo off" | "/demo @user on" | "/demo 12345 off"
-    if (!args) {
-      const me = upsertTelegramUser({
-        tgId: from.id,
-        username: from.username ?? null,
-        firstName: from.first_name ?? "Player",
-        photoUrl: null,
-      });
-      const updated = setDemoMode(me.id, !me.demo_mode);
-      await ctx.reply(`Demo mode for you: ${updated.demo_mode ? "ON" : "OFF"}`);
-      return;
-    }
-    const parts = args.split(/\s+/);
-
-    // Bulk: any of /demo all on, /demo on all, /demo @everyone on, /demo on @everyone
-    const isBulkToken = (p: string) => p === "all" || p === "@everyone" || p === "everyone" || p === "*";
-    if (parts.length === 2 && parts.some(isBulkToken)) {
-      const stateToken = parts.find((p) => !isBulkToken(p))!;
-      const enable = /^on|true|1|yes$/i.test(stateToken);
-      const result = db
-        .prepare("UPDATE users SET demo_mode = ? WHERE is_house = 0")
-        .run(enable ? 1 : 0);
-      await ctx.reply(`Demo mode set to ${enable ? "ON" : "OFF"} for ${result.changes} user(s).`);
-      return;
-    }
-
-    let target: string;
-    let stateStr: string;
-    if (parts.length === 1) {
-      // Just on/off → toggle self
-      target = String(from.id);
-      stateStr = parts[0]!;
-    } else {
-      target = parts[0]!;
-      stateStr = parts[1]!;
-    }
-    const enable = /^on|true|1|yes$/i.test(stateStr);
-    // Find user by tg_id (numeric) or @username
-    let targetUser;
-    if (/^\d+$/.test(target)) {
-      targetUser = db.prepare("SELECT * FROM users WHERE tg_id = ?").get(parseInt(target, 10)) as any;
-    } else {
-      const uname = target.replace(/^@/, "");
-      targetUser = db.prepare("SELECT * FROM users WHERE username = ?").get(uname) as any;
-    }
-    if (!targetUser) {
-      await ctx.reply(`User not found: ${target}`);
-      return;
-    }
-    const updated = setDemoMode(targetUser.id, enable);
-    await ctx.reply(`Demo mode for ${targetUser.username ? "@" + targetUser.username : targetUser.first_name}: ${updated.demo_mode ? "ON" : "OFF"}`);
-  });
-
-  bot.command("topup", async (ctx) => {
-    const from = ctx.from;
-    if (!from) return;
-    const user = upsertTelegramUser({
-      tgId: from.id,
-      username: from.username ?? null,
-      firstName: from.first_name ?? "Player",
-      photoUrl: null,
-    });
-    if (!isDemo(user.id)) {
-      await ctx.reply("Top-up is only available in demo mode.");
-      return;
-    }
-    const now = Date.now();
-    const last = topupLastAt.get(user.id) ?? 0;
-    const elapsed = now - last;
-    if (elapsed < TOPUP_COOLDOWN_MS) {
-      const remaining = TOPUP_COOLDOWN_MS - elapsed;
-      await ctx.reply(`Top-up on cooldown. Try again in ${fmtDuration(remaining)}.`);
-      return;
-    }
-    const newBal = getDemoBalance(user.id) + TOPUP_AMOUNT_NANO;
-    setDemoBalance(user.id, newBal);
-    topupLastAt.set(user.id, now);
-    await ctx.reply(`Topped up 25 TON (demo). Balance: ${fmtTon(newBal)} TON.\nNext top-up in 30m.`);
-  });
-
   bot.command("withdraw", async (ctx) => {
     await ctx.reply(
       "Open the Wallet tab in the app to withdraw.",
@@ -248,15 +90,9 @@ export function startBot() {
 
     bot.api
       .setMyCommands([
-        { command: "play", description: "Open the arena" },
-        { command: "mine", description: "Open mining race" },
-        { command: "dice", description: "Open Dice" },
-        { command: "limbo", description: "Open Limbo" },
-        { command: "keno", description: "Open Keno" },
-        { command: "balance", description: "Check your balance" },
+        { command: "start", description: "Welcome + menu" },
         { command: "deposit", description: "Get your deposit address" },
         { command: "withdraw", description: "Withdraw TON" },
-        { command: "topup", description: "Demo-only: +25 TON (30m cooldown)" },
       ])
       .catch((err) => console.warn("[bot] setMyCommands failed:", err.message));
   } else {
@@ -271,3 +107,6 @@ export function startBot() {
 
   started = true;
 }
+
+// botInstance is retained for the disabled notifyUser hook, not directly used.
+void botInstance;

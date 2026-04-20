@@ -16,24 +16,9 @@ export interface UserRow {
   last_seen_at: number;
 }
 
-export function setDemoMode(userId: string, enabled: boolean): UserRow {
-  db.prepare("UPDATE users SET demo_mode = ? WHERE id = ?").run(enabled ? 1 : 0, userId);
-  return getUserById(userId)!;
-}
-
-export function getDemoBalance(userId: string): bigint {
-  const u = getUserById(userId);
-  return u ? BigInt(u.demo_balance_nano) : 0n;
-}
-
-export function setDemoBalance(userId: string, balanceNano: bigint) {
-  db.prepare("UPDATE users SET demo_balance_nano = ? WHERE id = ?").run(balanceNano.toString(), userId);
-}
-
-export function isDemo(userId: string): boolean {
-  const u = getUserById(userId);
-  return !!u?.demo_mode;
-}
+// Demo-mode helpers removed. Columns still exist in the DB (from migration
+// 005_demo_mode.sql) but nothing reads or writes them anymore. Additive-only
+// migration policy means we don't drop columns; they're just dead weight.
 
 const ANON_ADJECTIVES = ["Swift","Lucky","Shadow","Wild","Dark","Brave","Gold","Steel","Iron","Neon"];
 const ANON_NOUNS = ["Wolf","Fox","Bear","Eagle","Shark","Tiger","Falcon","Cobra","Phoenix","Raven"];

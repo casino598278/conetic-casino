@@ -67,7 +67,6 @@ export function WalletSheet({ onClose }: Props) {
         case "daily_limit":          return "Daily withdraw limit reached";
         case "rate_limited":         return "Wait a moment before withdrawing again";
         case "cooldown":             return "Withdraw cooldown — try again shortly";
-        case "demo_mode":            return "Withdrawals disabled in demo mode";
         case "http_502":
         case "http_503":             return "Server is restarting — try again";
         default:                     return `Withdraw failed (${err.code})`;
