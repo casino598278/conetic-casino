@@ -2077,15 +2077,18 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   line-height: 1;
 }
 
-/* Compact paytable row — sits tight under the grid like Stake. */
+/* Compact paytable row — single row, equal-width cells that shrink to fit.
+   Matches Stake Keno's tight band under the grid. */
 .keno-paytable {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
-  gap: 4px;
+  display: flex;
+  gap: 3px;
   padding: 0 var(--shell-pad-x);
   margin-top: 6px;
+  overflow: hidden;
 }
 .keno-paytable-cell {
+  flex: 1 1 0;
+  min-width: 0;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--rr-xs);
@@ -2095,7 +2098,6 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   align-items: center;
   gap: 1px;
   transition: background var(--t-sm), border-color var(--t-sm);
-  min-width: 0;
 }
 .keno-paytable-cell.is-active {
   background: var(--c-accent-wash);

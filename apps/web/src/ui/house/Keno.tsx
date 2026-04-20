@@ -324,9 +324,17 @@ export function Keno({ onBack, onError, onOpenFairness }: Props) {
             // reports it.
             if (m <= 0) return null;
             const active = lastHits === hits;
+            // Compact multiplier formatting so the cells fit on one row even
+            // with 10 entries: drop decimals for whole-ish values, use "k"
+            // for thousands.
+            const multStr =
+              m >= 1000 ? `${(m / 1000).toFixed(m >= 10_000 ? 0 : 1).replace(/\.0$/, "")}k×`
+              : m >= 100 ? `${Math.round(m)}×`
+              : m >= 10  ? `${m.toFixed(1).replace(/\.0$/, "")}×`
+              :            `${m.toFixed(2)}×`;
             return (
               <div key={hits} className={`keno-paytable-cell ${active ? "is-active" : ""}`}>
-                <div className="keno-paytable-mult">{m.toFixed(2)}×</div>
+                <div className="keno-paytable-mult">{multStr}</div>
                 <div className="keno-paytable-hits">{hits}×</div>
               </div>
             );
