@@ -2,9 +2,9 @@ import { create } from "zustand";
 
 export type ShellTab = "browse" | "bets" | "menu";
 export type BrowseCategory = "originals" | "multiplayer";
-export type GameKey = "arena" | "mining" | "dice" | "limbo" | null;
+export type GameKey = "arena" | "mining" | "dice" | "limbo" | "keno" | null;
 
-const VALID_GAMES: Exclude<GameKey, null>[] = ["arena", "mining", "dice", "limbo"];
+const VALID_GAMES: Exclude<GameKey, null>[] = ["arena", "mining", "dice", "limbo", "keno"];
 const VALID_CATEGORIES: BrowseCategory[] = ["originals", "multiplayer"];
 
 function parseInitialGame(): GameKey {

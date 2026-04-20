@@ -11,6 +11,7 @@ interface OriginalSpec {
 const ORIGINALS: OriginalSpec[] = [
   { key: "dice",  name: "Dice",  game: "dice"  },
   { key: "limbo", name: "Limbo", game: "limbo" },
+  { key: "keno",  name: "Keno",  game: "keno"  },
 ];
 
 const MULTIPLAYER: { key: string; name: string; sub: string; game: GameKey }[] = [

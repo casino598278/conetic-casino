@@ -83,11 +83,39 @@ const mining = (
   </g>
 );
 
+const keno = (
+  <g>
+    {Array.from({ length: 5 }).map((_, r) =>
+      Array.from({ length: 4 }).map((_, c) => {
+        const x = 26 + c * 28;
+        const y = 40 + r * 28;
+        // A few cells in each column use the accent colour to hint at hits.
+        const hit = (r * 4 + c) % 5 === 1;
+        return (
+          <rect
+            key={`${r}-${c}`}
+            x={x}
+            y={y}
+            width="22"
+            height="22"
+            rx="4"
+            fill={hit ? ACCENT : "none"}
+            stroke={hit ? ACCENT : STROKE}
+            strokeWidth="1.3"
+            opacity={hit ? 0.95 : 0.55}
+          />
+        );
+      }),
+    )}
+  </g>
+);
+
 const TILE_ART: Record<string, JSX.Element> = {
   dice,
   limbo,
   arena,
   mining,
+  keno,
 };
 
 interface Props {

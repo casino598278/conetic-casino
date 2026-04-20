@@ -1950,6 +1950,181 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 .limbo-chip.is-win { color: var(--c-win); border-color: rgba(95, 216, 140, 0.3); }
 .limbo-chip.is-loss { color: var(--c-loss); border-color: rgba(226, 95, 116, 0.3); }
 
+/* ---------- Keno ---------- */
+.keno-stage {
+  flex-direction: column;
+  padding: 14px 10px 18px;
+  gap: 12px;
+}
+.keno-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 5px;
+  width: 100%;
+  max-width: 420px;
+}
+.keno-cell {
+  aspect-ratio: 1 / 1;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-2);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border-radius: var(--rr-sm);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--t-xs), border-color var(--t-xs), color var(--t-xs), transform var(--t-xs);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.keno-cell:hover:not(:disabled):not(.is-picked) {
+  border-color: var(--c-border-2);
+  color: var(--c-text);
+}
+.keno-cell:disabled { cursor: not-allowed; }
+.keno-cell.is-picked {
+  background: var(--c-accent-wash);
+  border-color: var(--c-accent);
+  color: var(--c-accent-hi);
+}
+/* Drawn + picked = hit */
+.keno-cell.is-hit {
+  background: var(--c-win);
+  border-color: var(--c-win);
+  color: var(--c-bg);
+  animation: keno-pop 220ms var(--ease);
+}
+@keyframes keno-pop {
+  0%   { transform: scale(.7); }
+  60%  { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+/* Drawn but not picked = miss indicator (muted outline) */
+.keno-cell.is-miss {
+  background: transparent;
+  border-color: var(--c-border-2);
+  color: var(--c-text-3);
+  animation: keno-pop 220ms var(--ease);
+}
+/* After reveal, unpicked cells that were drawn = soft highlight */
+.keno-cell.is-drawn:not(.is-picked) {
+  border-style: dashed;
+}
+
+.keno-summary {
+  display: flex;
+  justify-content: space-around;
+  width: 100%;
+  max-width: 420px;
+  gap: 8px;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--c-border);
+}
+.keno-summary-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.keno-summary-lbl { font-size: 10px; color: var(--c-text-3); font-weight: 500; }
+.keno-summary-val {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+}
+.keno-summary-val.is-win { color: var(--c-win); }
+.keno-summary-val.is-loss { color: var(--c-loss); }
+
+.keno-won {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--c-win);
+  font-variant-numeric: tabular-nums;
+  padding-top: 4px;
+  animation: keno-pop 320ms var(--ease);
+}
+.keno-won-mult { color: var(--c-text-2); font-weight: 500; font-size: 13px; }
+
+.keno-paytable {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
+  gap: 4px;
+  padding: 0 var(--shell-pad-x);
+  margin-top: 8px;
+}
+.keno-paytable-cell {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--rr-sm);
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  transition: background var(--t-sm), border-color var(--t-sm), transform var(--t-sm);
+}
+.keno-paytable-cell.is-zero { opacity: .4; }
+.keno-paytable-cell.is-active {
+  background: var(--c-accent-wash);
+  border-color: var(--c-accent);
+  transform: translateY(-1px);
+}
+.keno-paytable-mult {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+}
+.keno-paytable-cell.is-active .keno-paytable-mult { color: var(--c-accent-hi); }
+.keno-paytable-hits {
+  font-size: 9px;
+  color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.keno-risk-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--rr-sm);
+}
+.keno-risk-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--c-text-2);
+  padding: 6px 0;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: calc(var(--rr-sm) - 2px);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--t-sm), color var(--t-sm);
+  white-space: nowrap;
+}
+.keno-risk-tab.is-active { background: var(--c-surface-2); color: var(--c-text); }
+.keno-risk-tab:disabled { opacity: .45; cursor: not-allowed; }
+
+.keno-pick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.keno-pick-btn {
+  border: 1px solid var(--c-border) !important;
+  background: transparent !important;
+  border-radius: var(--rr-sm);
+  height: 32px;
+  padding: 0 12px !important;
+}
+.keno-pick-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ============ Profile sheet ============ */
 .profile-head {
   display: flex;

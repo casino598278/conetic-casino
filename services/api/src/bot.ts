@@ -96,6 +96,12 @@ export function startBot() {
     });
   });
 
+  bot.command("keno", async (ctx) => {
+    await ctx.reply("Keno. Pick up to 10 cells on the 40-cell grid.", {
+      reply_markup: openGameKb("keno", "Open Keno"),
+    });
+  });
+
   bot.command("balance", async (ctx) => {
     const from = ctx.from;
     if (!from) return;
@@ -250,6 +256,7 @@ export function startBot() {
         { command: "mine", description: "Open mining race" },
         { command: "dice", description: "Open Dice" },
         { command: "limbo", description: "Open Limbo" },
+        { command: "keno", description: "Open Keno" },
         { command: "balance", description: "Check your balance" },
         { command: "deposit", description: "Get your deposit address" },
         { command: "withdraw", description: "Withdraw TON" },

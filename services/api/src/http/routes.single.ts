@@ -13,6 +13,14 @@ import {
   validateLimboParams,
   LIMBO_MIN_TARGET,
   LIMBO_MAX_TARGET,
+  playKeno,
+  kenoMultiplier,
+  kenoMaxMultiplier,
+  validateKenoParams,
+  KENO_GRID,
+  KENO_MIN_PICKS,
+  KENO_MAX_PICKS,
+  type KenoRisk,
 } from "@conetic/shared";
 import { requireAuthHook } from "../auth/authPlugin.js";
 import { playHouseGame, publicSeedState, maxWinTon } from "../game/houseGameEngine.js";
@@ -34,6 +42,12 @@ const DicePlayBody = PlayBody.extend({
 
 const LimboPlayBody = PlayBody.extend({
   target: z.number().min(LIMBO_MIN_TARGET).max(LIMBO_MAX_TARGET),
+});
+
+const KenoPlayBody = PlayBody.extend({
+  risk: z.enum(["low", "classic", "medium", "high"]),
+  picks: z.array(z.number().int().min(0).max(KENO_GRID - 1))
+    .min(KENO_MIN_PICKS).max(KENO_MAX_PICKS),
 });
 
 const RotateBody = z.object({
@@ -163,6 +177,50 @@ export async function registerSingleRoutes(app: FastifyInstance) {
       outcome: result.outcome,
       multiplier: result.multiplier,
       winChance: chance,
+      betNano: result.betNano,
+      payoutNano: result.payoutNano,
+      newBalanceNano: result.newBalanceNano,
+      nonce: result.nonce,
+      serverSeedHash: result.serverSeedHash,
+      clientSeedHex: result.clientSeedHex,
+      playId: result.playId,
+    });
+  });
+
+  app.post("/single/keno/play", { preHandler: requireAuthHook }, async (req, reply) => {
+    if (!req.user) return reply.code(401).send({ error: "unauthenticated" });
+    const parsed = KenoPlayBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "bad request" });
+    const risk = parsed.data.risk as KenoRisk;
+    const picks = parsed.data.picks;
+    // Dedupe defensively — zod min/max already covers length but not uniqueness.
+    const uniquePicks = Array.from(new Set(picks));
+    if (uniquePicks.length !== picks.length) {
+      return reply.code(400).send({ error: "invalid_params" });
+    }
+    const params = { risk, picks: uniquePicks };
+    const maxMult = kenoMaxMultiplier(risk, uniquePicks.length);
+    const result = await playHouseGame({
+      userId: req.user.sub,
+      game: "keno",
+      betNano: BigInt(parsed.data.amountNano),
+      params,
+      validate: validateKenoParams,
+      compute: async ({ serverSeedHex, clientSeedHex, nonce, params: p }) => {
+        const outcome = await playKeno(serverSeedHex, clientSeedHex, nonce, p);
+        const m = kenoMultiplier(p.risk, p.picks.length, outcome.hits);
+        return {
+          outcome,
+          multiplier: m,
+          maxMultiplier: maxMult,
+        };
+      },
+    });
+    if (!result.ok) return reply.code(409).send({ error: result.error, meta: result.meta });
+    return reply.send({
+      ok: true,
+      outcome: result.outcome,
+      multiplier: result.multiplier,
       betNano: result.betNano,
       payoutNano: result.payoutNano,
       newBalanceNano: result.newBalanceNano,

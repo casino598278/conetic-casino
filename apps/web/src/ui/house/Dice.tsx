@@ -208,11 +208,14 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
   };
 
   // Commit an edited multiplier: invert the formula to find the target that
-  // yields that multiplier on the current side.
+  // yields that multiplier on the current side. Cap at 100× (equivalent to
+  // win chance 0.99% — the thinnest target the slider can physically hit).
+  const MAX_MULT = 100;
   const commitMult = () => {
     const m = parseFloat(multStr);
     if (!Number.isFinite(m) || m <= 1) { setMultStr(mult.toFixed(2)); return; }
-    const newChance = HOUSE_RTP / m;
+    const clampedMult = Math.min(MAX_MULT, m);
+    const newChance = HOUSE_RTP / clampedMult;
     const pct = Math.max(0, Math.min(1, newChance)) * 100;
     const newTarget = over ? DICE_MAX_TARGET + DICE_MIN_TARGET - pct : pct;
     setTarget(round2(clampTarget(newTarget)));
