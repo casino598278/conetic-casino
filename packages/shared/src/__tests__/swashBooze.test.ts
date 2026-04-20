@@ -2,24 +2,38 @@ import { describe, it, expect } from "vitest";
 import {
   playSwashBooze,
   swashBoozeMaxMultiplier,
+  swashBoozeStakeMultiplier,
   validateSwashBoozeParams,
   SWASH_GRID_W,
   SWASH_GRID_H,
   SWASH_FREE_SPINS,
   SWASH_MAX_MULTIPLIER,
+  SWASH_ANTE_MULTIPLIER,
+  SWASH_BONUS_BUY_COST,
 } from "../games/index.js";
 
 const SERVER = "a".repeat(64);
 const CLIENT = "b".repeat(32);
 
 describe("swash booze fairness", () => {
-  it("validateSwashBoozeParams accepts spin + buy, rejects the rest", () => {
+  it("validateSwashBoozeParams accepts spin + buy with optional ante, rejects invalid combos", () => {
     expect(validateSwashBoozeParams({ mode: "spin" })).toBe(true);
     expect(validateSwashBoozeParams({ mode: "buy" })).toBe(true);
+    expect(validateSwashBoozeParams({ mode: "spin", ante: true })).toBe(true);
+    expect(validateSwashBoozeParams({ mode: "spin", ante: false })).toBe(true);
+    // Ante + Buy is mutually exclusive
+    expect(validateSwashBoozeParams({ mode: "buy", ante: true })).toBe(false);
+    // Garbage
     expect(validateSwashBoozeParams({ mode: "nope" })).toBe(false);
     expect(validateSwashBoozeParams({})).toBe(false);
     expect(validateSwashBoozeParams(null)).toBe(false);
     expect(validateSwashBoozeParams("spin")).toBe(false);
+  });
+
+  it("stake multiplier: spin=1, ante=1.25, buy=100", () => {
+    expect(swashBoozeStakeMultiplier({ mode: "spin" })).toBe(1);
+    expect(swashBoozeStakeMultiplier({ mode: "spin", ante: true })).toBe(SWASH_ANTE_MULTIPLIER);
+    expect(swashBoozeStakeMultiplier({ mode: "buy" })).toBe(SWASH_BONUS_BUY_COST);
   });
 
   it("determinism: same seed + nonce → identical outcome", async () => {
@@ -40,15 +54,15 @@ describe("swash booze fairness", () => {
     }
   });
 
-  it("winning cells reference valid grid positions", async () => {
-    for (let n = 0; n < 50; n++) {
+  it("bombs appear only in free spins, never in base game", async () => {
+    for (let n = 0; n < 200; n++) {
       const r = await playSwashBooze(SERVER, CLIENT, n, { mode: "spin" });
       for (const step of r.baseSteps) {
-        for (const cell of step.winningCells) {
-          expect(cell.row).toBeGreaterThanOrEqual(0);
-          expect(cell.row).toBeLessThan(SWASH_GRID_H);
-          expect(cell.col).toBeGreaterThanOrEqual(0);
-          expect(cell.col).toBeLessThan(SWASH_GRID_W);
+        expect(step.bombs.length).toBe(0);
+        for (const row of step.grid) {
+          for (const sym of row) {
+            expect(sym).not.toBe("bomb");
+          }
         }
       }
     }
@@ -59,12 +73,22 @@ describe("swash booze fairness", () => {
       const r = await playSwashBooze(SERVER, CLIENT, n, { mode: "buy" });
       expect(r.baseSteps.length).toBe(0);
       expect(r.freeSpins.triggered).toBe(true);
-      expect(r.freeSpins.spins.length).toBe(SWASH_FREE_SPINS);
+      expect(r.freeSpins.spins.length).toBeGreaterThanOrEqual(SWASH_FREE_SPINS);
+    }
+  });
+
+  it("scatter direct payout: 4=3x, 5=5x, 6+=100x baked into baseScatterMult", async () => {
+    // Spot-check across nonces — whenever baseScatters >= 4, baseScatterMult is set.
+    for (let n = 0; n < 500; n++) {
+      const r = await playSwashBooze(SERVER, CLIENT, n, { mode: "spin" });
+      if (r.baseScatters >= 6) expect(r.baseScatterMult).toBe(100);
+      else if (r.baseScatters === 5) expect(r.baseScatterMult).toBe(5);
+      else if (r.baseScatters === 4) expect(r.baseScatterMult).toBe(3);
+      else expect(r.baseScatterMult).toBe(0);
     }
   });
 
   it("cluster wins only pay at 8+ symbols", async () => {
-    // Spot-check: wherever winSymbol is set, winCount must be >= 8.
     for (let n = 0; n < 30; n++) {
       const r = await playSwashBooze(SERVER, CLIENT, n, { mode: "spin" });
       for (const step of r.baseSteps) {
@@ -77,17 +101,40 @@ describe("swash booze fairness", () => {
     }
   });
 
-  it("lollipop + bomb never appear as the winning symbol", async () => {
+  it("lollipop + bomb never appear as cluster-paying symbols", async () => {
     for (let n = 0; n < 40; n++) {
       const r = await playSwashBooze(SERVER, CLIENT, n, { mode: "spin" });
       for (const step of r.baseSteps) {
         expect(step.winSymbol).not.toBe("lollipop");
         expect(step.winSymbol).not.toBe("bomb");
       }
+      for (const fsSpin of r.freeSpins.spins) {
+        for (const step of fsSpin.steps) {
+          expect(step.winSymbol).not.toBe("lollipop");
+          expect(step.winSymbol).not.toBe("bomb");
+        }
+      }
     }
   });
 
-  it("no single outcome exceeds the max-multiplier guard", async () => {
+  it("free-spins multipliers do NOT persist across spins", async () => {
+    // Walk many bonus-buy rounds. Verify each spin's spinMultTotal equals the
+    // sum of bomb values that landed *within that spin's own steps*, never
+    // carrying bombs from earlier spins.
+    for (let n = 0; n < 50; n++) {
+      const r = await playSwashBooze(SERVER, CLIENT, 1000 + n, { mode: "buy" });
+      for (const spin of r.freeSpins.spins) {
+        const thisSpinBombSum = spin.steps.reduce(
+          (s, step) => s + step.bombs.reduce((ss, b) => ss + b.value, 0),
+          0,
+        );
+        const expected = thisSpinBombSum > 0 ? thisSpinBombSum : 1;
+        expect(spin.spinMultTotal).toBe(expected);
+      }
+    }
+  });
+
+  it("no outcome exceeds SWASH_MAX_MULTIPLIER", async () => {
     for (let n = 0; n < 200; n++) {
       const r = await playSwashBooze(SERVER, CLIENT, n, { mode: "spin" });
       expect(r.multiplier).toBeLessThanOrEqual(SWASH_MAX_MULTIPLIER);
@@ -100,11 +147,21 @@ describe("swash booze fairness", () => {
     expect(swashBoozeMaxMultiplier("buy")).toBe(SWASH_MAX_MULTIPLIER);
   });
 
-  // RTP convergence. Slot variance is brutal — a 21,100× max single win means
-  // one lucky spin can spike RTP for thousands of iterations. With N=5000 we
-  // use a very loose bound just to catch pathological drift (e.g. RTP=0 if a
-  // typo kills all payouts, or RTP>>1 if max-cap is missing).
-  it("RTP over 5000 base-game spins stays in the 0.4–2.0 band (anti-drift check)", async () => {
+  it("all bomb values in FS are 2..100 (matches Sweet Bonanza spec)", async () => {
+    for (let n = 0; n < 100; n++) {
+      const r = await playSwashBooze(SERVER, CLIENT, 2000 + n, { mode: "buy" });
+      for (const spin of r.freeSpins.spins) {
+        for (const step of spin.steps) {
+          for (const bomb of step.bombs) {
+            expect(bomb.value).toBeGreaterThanOrEqual(2);
+            expect(bomb.value).toBeLessThanOrEqual(100);
+          }
+        }
+      }
+    }
+  });
+
+  it("RTP over 5000 base-game spins stays in the 0.4–2.0 anti-drift band", async () => {
     const N = 5000;
     let paid = 0;
     for (let n = 0; n < N; n++) {

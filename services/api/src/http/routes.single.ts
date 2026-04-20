@@ -23,8 +23,8 @@ import {
   type KenoRisk,
   playSwashBooze,
   swashBoozeMaxMultiplier,
+  swashBoozeStakeMultiplier,
   validateSwashBoozeParams,
-  SWASH_BONUS_BUY_COST,
   type SwashBoozeParams,
 } from "@conetic/shared";
 import { requireAuthHook } from "../auth/authPlugin.js";
@@ -51,6 +51,7 @@ const LimboPlayBody = PlayBody.extend({
 
 const SwashPlayBody = PlayBody.extend({
   mode: z.enum(["spin", "buy"]),
+  ante: z.boolean().optional(),
 });
 
 const KenoPlayBody = PlayBody.extend({
@@ -244,14 +245,23 @@ export async function registerSingleRoutes(app: FastifyInstance) {
     if (!req.user) return reply.code(401).send({ error: "unauthenticated" });
     const parsed = SwashPlayBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "bad request" });
-    const params: SwashBoozeParams = { mode: parsed.data.mode };
+    const params: SwashBoozeParams = {
+      mode: parsed.data.mode,
+      ante: parsed.data.ante ?? false,
+    };
 
-    // Bonus buy costs 100× the bet — charge the multiplied stake up-front.
-    // Client sends `amountNano` as the base bet; server debits 100× on mode=buy.
+    // Ante bet + bonus buy are mutually exclusive.
+    if (params.mode === "buy" && params.ante) {
+      return reply.code(400).send({ error: "ante_disabled_with_buy" });
+    }
+
+    // Stake multiplier: 1× normal, 1.25× with ante, 100× on buy. Charged
+    // server-side so the client just sends its base bet regardless of mode.
     const baseBetNano = BigInt(parsed.data.amountNano);
-    const effectiveStake = params.mode === "buy"
-      ? baseBetNano * BigInt(SWASH_BONUS_BUY_COST)
-      : baseBetNano;
+    const stakeMult = swashBoozeStakeMultiplier(params);
+    // Use 10_000-scaled integer math so 1.25× stays exact.
+    const scaledMult = BigInt(Math.round(stakeMult * 10_000));
+    const effectiveStake = (baseBetNano * scaledMult) / 10_000n;
 
     const maxMult = swashBoozeMaxMultiplier(params.mode);
     const result = await playHouseGame({
@@ -275,6 +285,7 @@ export async function registerSingleRoutes(app: FastifyInstance) {
       betNano: result.betNano,
       baseBetNano: baseBetNano.toString(),
       mode: params.mode,
+      ante: !!params.ante,
       payoutNano: result.payoutNano,
       newBalanceNano: result.newBalanceNano,
       nonce: result.nonce,

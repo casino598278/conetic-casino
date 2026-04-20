@@ -12,6 +12,7 @@ import { BrowseHome } from "./ui/shell/BrowseHome";
 import { useMiningStore } from "./state/miningStore";
 import { useLobbyStore } from "./state/lobbyStore";
 import { useWalletStore } from "./state/walletStore";
+import { usePriceStore } from "./state/priceStore";
 import { useNavStore } from "./state/navStore";
 import { api, login, getToken, clearToken, ApiError } from "./net/api";
 import { getSocket } from "./net/socket";
@@ -97,6 +98,26 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [, setWsConnected] = useState(false);
   const [winScreenVisible, setWinScreenVisible] = useState(false);
+
+  // TON→USD price watch — refresh once per minute from our server cache so
+  // every fmtUsd() callsite has a live rate. First fetch runs at mount.
+  const setPrice = usePriceStore((s) => s.set);
+  useEffect(() => {
+    let cancelled = false;
+    const fetchPrice = async () => {
+      try {
+        const res = await fetch("/api/price", { cache: "no-store" });
+        if (!res.ok) return;
+        const { usdPerTon, stale } = await res.json();
+        if (!cancelled && typeof usdPerTon === "number") {
+          setPrice(usdPerTon, !!stale);
+        }
+      } catch { /* ignore; old rate persists */ }
+    };
+    fetchPrice();
+    const t = setInterval(fetchPrice, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [setPrice]);
 
   // Version watch — reload if backend deployed a new build.
   useEffect(() => {
