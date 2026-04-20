@@ -77,13 +77,19 @@ export function debit(input: {
   reason: LedgerReason;
   refId?: string | null;
   roundId?: number | null;
+  /** Allow the balance to go negative (used only for the synthetic house user,
+   *  which is an accounting counterparty and needs to pay out bigger-than-balance
+   *  wins). Never set on a real user. */
+  allowNegative?: boolean;
 }): void {
   if (input.amountNano <= 0n) throw new Error(`debit amount must be positive, got ${input.amountNano}`);
   const chainId = input.chainId ?? "ton";
   txn(() => {
-    const bal = getBalanceNano(input.userId, chainId);
-    if (bal < input.amountNano) {
-      throw new InsufficientBalanceError(input.userId, bal, input.amountNano);
+    if (!input.allowNegative) {
+      const bal = getBalanceNano(input.userId, chainId);
+      if (bal < input.amountNano) {
+        throw new InsufficientBalanceError(input.userId, bal, input.amountNano);
+      }
     }
     insertEntry().run(
       input.userId,

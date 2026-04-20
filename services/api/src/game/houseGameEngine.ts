@@ -141,6 +141,7 @@ export async function playHouseGame<Params, Outcome>(args: {
 
   // House bookkeeping — not visible to players; drives /admin/house-stats later.
   // Net to house = bet - payout. Negative means house paid more than it took.
+  // The house ledger is a synthetic accounting user and is allowed to go negative.
   const houseId = getHouseUserId();
   const houseDelta = betNano - payoutNano;
   if (houseDelta !== 0n) {
@@ -148,7 +149,7 @@ export async function playHouseGame<Params, Outcome>(args: {
       if (houseDelta > 0n) {
         credit({ userId: houseId, amountNano: houseDelta, reason: "rake" });
       } else {
-        debit({ userId: houseId, amountNano: -houseDelta, reason: "bet" });
+        debit({ userId: houseId, amountNano: -houseDelta, reason: "bet", allowNegative: true });
       }
     });
   }
