@@ -44,17 +44,17 @@ interface Props {
 
 // ────────────────────────── animation timings ──────────────────────────
 
-const STAGGER_MS = 60;           // per-column drop stagger
-const DROP_DUR_MS = 420;         // full drop per column
-const WIN_FLASH_MS = 600;        // winning-cluster pulse+burst dwell
-const TUMBLE_GAP_MS = 200;       // post-burst pause before next drop
+const STAGGER_MS = 28;           // per-column drop stagger
+const DROP_DUR_MS = 220;         // full drop per column
+const WIN_FLASH_MS = 320;        // winning-cluster pulse+burst dwell
+const TUMBLE_GAP_MS = 90;        // post-burst pause before next drop
 const STEP_DUR = STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS + WIN_FLASH_MS + TUMBLE_GAP_MS;
 
-const FS_INTRO_MS = 1600;
-const FS_BETWEEN_MS = 400;
-const FS_OUTRO_MS = 1800;
-const BIG_WIN_MS = 2400;
-const COUNTUP_DUR_MS = 1200;
+const FS_INTRO_MS = 1100;
+const FS_BETWEEN_MS = 220;
+const FS_OUTRO_MS = 1300;
+const BIG_WIN_MS = 1800;
+const COUNTUP_DUR_MS = 900;
 
 // ────────────────────────── component ──────────────────────────
 
