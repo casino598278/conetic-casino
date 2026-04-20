@@ -29,19 +29,15 @@ function fmtTon(nano: bigint): string {
 }
 
 /**
- * Send a plain-text DM to a user by Telegram ID. Safe to call from anywhere;
- * no-ops if the bot isn't up yet or the user has blocked the bot.
+ * Formerly sent a DM to a user. All unsolicited bot DMs have been disabled
+ * per product direction — now just logs to server console so the call sites
+ * (deposit watcher, withdraw sender, round-end hooks) still work without
+ * spamming players. Re-enable by restoring the sendMessage body below.
  */
-export async function notifyUser(tgId: number, text: string, opts?: { markdown?: boolean }) {
-  if (!botInstance) return;
-  try {
-    await botInstance.api.sendMessage(tgId, text, opts?.markdown ? { parse_mode: "Markdown" } : undefined);
-  } catch (err: any) {
-    // 403 = user blocked the bot, 400 = invalid chat — both non-fatal
-    const code = err?.error_code;
-    if (code !== 403 && code !== 400) {
-      console.warn("[bot] notifyUser failed", tgId, err?.description ?? err?.message);
-    }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function notifyUser(tgId: number, text: string, _opts?: { markdown?: boolean }) {
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[bot] would-notify tg:${tgId} ${text.slice(0, 120)}`);
   }
 }
 
