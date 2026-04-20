@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   SWASH_GRID_H,
   SWASH_GRID_W,
   SWASH_FREE_SPINS,
   SWASH_BONUS_BUY_COST,
+  SWASH_ANTE_MULTIPLIER,
+  SWASH_SCATTERS_TO_TRIGGER,
   type SwashSymbol,
   type SwashSpinStep,
   type SwashOutcome,
@@ -11,131 +13,28 @@ import {
 import { api, ApiError } from "../../net/api";
 import { haptic, notify } from "../../telegram/initWebApp";
 import { useWalletStore } from "../../state/walletStore";
-import { AutoPanel, type AutoBetResult } from "./AutoPanel";
+import { usePriceStore, usdToNano, nanoToUsd, fmtUsd } from "../../state/priceStore";
+import { SwashSymbolIcon, SwashBombIcon } from "./swashSymbols";
 
-const NANO = 1_000_000_000n;
+// ────────────────────────── helpers ──────────────────────────
 
-function fmtTon(nano: bigint): string {
-  const w = nano / NANO;
-  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
-  return f ? `${w}.${f}` : `${w}`;
-}
-function tonToNano(ton: number): bigint {
-  if (!Number.isFinite(ton) || ton <= 0) return 0n;
-  const s = ton.toFixed(9);
-  const [whole, frac = ""] = s.split(".");
-  return BigInt(whole!) * NANO + BigInt(frac.padEnd(9, "0").slice(0, 9));
-}
-function nanoToTonDisplay(nano: bigint): string {
-  if (nano <= 0n) return "0";
-  const w = nano / NANO;
-  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
-  return f ? `${w}.${f}` : `${w}`;
-}
-
-// ──────────────────────────── symbol art ────────────────────────────
-
-/** Inline SVG for each symbol. Size-agnostic, fills the cell. */
-function SymbolIcon({ s }: { s: SwashSymbol }) {
-  switch (s) {
-    case "red":    return <CandyChip fill="#ff5b7a" shape="heart" />;
-    case "purple": return <CandyChip fill="#b066ff" shape="squircle" />;
-    case "green":  return <CandyChip fill="#5fd88c" shape="triangle" />;
-    case "blue":   return <CandyChip fill="#4cb8ff" shape="diamond" />;
-    case "plum":   return <FruitIcon fill="#9d5bff" highlight="#c99aff" />;
-    case "apple":  return <FruitIcon fill="#5fd88c" highlight="#b5f0c9" />;
-    case "watermelon": return <FruitIcon fill="#ff5b7a" highlight="#5fd88c" />;
-    case "grape":  return <FruitIcon fill="#7a3fd9" highlight="#b58bff" dots />;
-    case "banana": return <FruitIcon fill="#f1c94a" highlight="#ffe58c" />;
-    case "lollipop": return <ScatterIcon />;
-    case "bomb":   return <BombIcon />;
-  }
-}
-
-function CandyChip({ fill, shape }: { fill: string; shape: "heart" | "squircle" | "triangle" | "diamond" }) {
-  return (
-    <svg viewBox="0 0 40 40" aria-hidden>
-      <defs>
-        <radialGradient id={`cg-${fill.replace("#","")}`} cx="35%" cy="30%" r="70%">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.55" />
-          <stop offset="60%" stopColor={fill} />
-          <stop offset="100%" stopColor={fill} stopOpacity="0.9" />
-        </radialGradient>
-      </defs>
-      {shape === "heart" && (
-        <path d="M20 33 C 8 24, 6 14, 13 10 C 17 8, 20 12, 20 14 C 20 12, 23 8, 27 10 C 34 14, 32 24, 20 33 Z"
-              fill={`url(#cg-${fill.replace("#","")})`} stroke={fill} strokeOpacity="0.3" strokeWidth="0.6" />
-      )}
-      {shape === "squircle" && (
-        <rect x="6" y="6" width="28" height="28" rx="8" fill={`url(#cg-${fill.replace("#","")})`} />
-      )}
-      {shape === "triangle" && (
-        <polygon points="20,6 34,32 6,32" fill={`url(#cg-${fill.replace("#","")})`} />
-      )}
-      {shape === "diamond" && (
-        <polygon points="20,4 36,20 20,36 4,20" fill={`url(#cg-${fill.replace("#","")})`} />
-      )}
-    </svg>
-  );
-}
-
-function FruitIcon({ fill, highlight, dots }: { fill: string; highlight: string; dots?: boolean }) {
-  return (
-    <svg viewBox="0 0 40 40" aria-hidden>
-      <circle cx="20" cy="22" r="14" fill={fill} />
-      <ellipse cx="14" cy="16" rx="5" ry="3" fill={highlight} opacity="0.6" />
-      {dots && (
-        <>
-          <circle cx="14" cy="24" r="2.2" fill="#000" opacity="0.15" />
-          <circle cx="22" cy="20" r="2.2" fill="#000" opacity="0.15" />
-          <circle cx="25" cy="27" r="2.2" fill="#000" opacity="0.15" />
-        </>
-      )}
-      {/* leaf */}
-      <path d="M20 10 Q24 6 28 8 Q24 12 20 12 Z" fill="#5fd88c" />
-    </svg>
-  );
-}
-
-function ScatterIcon() {
-  return (
-    <svg viewBox="0 0 40 40" aria-hidden>
-      <circle cx="20" cy="18" r="12" fill="#f1c94a" stroke="#ff5b7a" strokeWidth="2" />
-      <path d="M20 30 L20 36" stroke="#8d9ca8" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="20" cy="18" r="4" fill="#ff5b7a" />
-    </svg>
-  );
-}
-
-function BombIcon() {
-  return (
-    <svg viewBox="0 0 40 40" aria-hidden>
-      <circle cx="20" cy="22" r="12" fill="#1a2128" stroke="#4cb8ff" strokeWidth="2" />
-      <path d="M20 10 L22 6 L26 8" stroke="#f1c94a" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="26" cy="8" r="2" fill="#f1c94a" />
-    </svg>
-  );
-}
-
-// ──────────────────────────── grid helpers ────────────────────────────
-
-/** Random initial grid for idle state (no server call yet — just decorative). */
-function randomIdleGrid(): SwashSymbol[][] {
+const randomIdleGrid = (): SwashSymbol[][] => {
   const bag: SwashSymbol[] = ["red", "purple", "green", "blue", "plum", "apple", "watermelon", "grape", "banana"];
   return Array.from({ length: SWASH_GRID_H }, () =>
     Array.from({ length: SWASH_GRID_W }, () => bag[Math.floor(Math.random() * bag.length)]!),
   );
-}
+};
 
-// ──────────────────────────── play result type ────────────────────────────
+// ────────────────────────── play result type ──────────────────────────
 
 interface PlayResult {
   ok: true;
   outcome: SwashOutcome;
   multiplier: number;
-  betNano: string;      // actual debited amount (1× bet or 100× on buy)
-  baseBetNano: string;  // the user's selected bet
+  betNano: string;      // actual debited amount (1×/1.25× spin, 100× buy)
+  baseBetNano: string;  // user's selected bet
   mode: "spin" | "buy";
+  ante: boolean;
   payoutNano: string;
   newBalanceNano: string;
 }
@@ -143,112 +42,136 @@ interface PlayResult {
 interface Props {
   onBack: () => void;
   onError?: (msg: string) => void;
-  // Fairness is intentionally omitted on slots per product direction.
 }
 
-// ──────────────────────────── animation timings ────────────────────────────
+// ────────────────────────── animation timings ──────────────────────────
 
-const STEP_MS = 650;          // per-tumble-step dwell (settle after drop + win flash)
-const FS_INTRO_MS = 900;      // banner for "10 Free Spins"
-const FS_BETWEEN_MS = 180;    // small pause between each free spin
-const WIN_CARD_MS = 1000;     // how long the win card stays up after a spin
+const COLUMN_STAGGER_MS = 70;    // between each column's start of drop
+const DROP_DUR_MS = 380;         // full drop per column
+const WIN_BURST_MS = 520;        // cluster cells pulse + burst
+const TUMBLE_GAP_MS = 160;       // beat after burst before next drop
+const BOMB_REVEAL_MS = 320;      // bomb landing pop
+const FS_INTRO_MS = 1400;        // "10 Free Spins!" banner dwell
+const FS_BETWEEN_MS = 380;       // gap between free spins
+const FS_OUTRO_MS = 1500;        // end-of-FS summary dwell
+const BIG_WIN_MS = 2200;         // Big/Super/Mega win celebration dwell
+const COUNTUP_DUR_MS = 1200;     // win amount count-up
 
-function computeSettleMs(outcome: SwashOutcome): number {
-  const baseSteps = outcome.baseSteps.length;
-  const fsSteps = outcome.freeSpins.spins.reduce((n, s) => n + s.steps.length, 0);
-  return (
-    baseSteps * STEP_MS +
-    (outcome.freeSpins.triggered ? FS_INTRO_MS + fsSteps * STEP_MS + outcome.freeSpins.spins.length * FS_BETWEEN_MS : 0) +
-    WIN_CARD_MS
-  );
+// ────────────────────────── per-spin animation plan ──────────────────────────
+
+interface StepAnim {
+  kind: "step";
+  step: SwashSpinStep;
+  durMs: number;
 }
+interface FsIntroAnim { kind: "fs-intro"; durMs: number; }
+interface FsOutroAnim { kind: "fs-outro"; totalMult: number; durMs: number; }
+interface BigWinAnim { kind: "big-win"; tier: "big" | "super" | "mega"; multiplier: number; durMs: number; }
+type AnimFrame = StepAnim | FsIntroAnim | FsOutroAnim | BigWinAnim;
 
-// ──────────────────────────── component ────────────────────────────
+// ────────────────────────── component ──────────────────────────
 
 export function SwashBooze({ onBack, onError }: Props) {
   const balance = useWalletStore((s) => s.balanceNano);
   const setBalance = useWalletStore((s) => s.setBalance);
+  const usdPerTon = usePriceStore((s) => s.usdPerTon);
 
-  const [amount, setAmount] = useState("1");
-  const [mode, setMode] = useState<"manual" | "auto">("manual");
+  // Bet config (USD)
+  const [bet, setBet] = useState("1");
+  const [ante, setAnte] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
+
+  // Animation + outcome state
   const [busy, setBusy] = useState(false);
   const [rolling, setRolling] = useState(false);
-
-  /** Currently-drawn grid. Swapped each animation step. */
   const [grid, setGrid] = useState<SwashSymbol[][]>(() => randomIdleGrid());
-  /** Cells currently flashing as a win. */
   const [winCells, setWinCells] = useState<Set<string>>(new Set());
-  /** Active bomb overlays on the current grid. */
   const [bombs, setBombs] = useState<Array<{ row: number; col: number; value: number }>>([]);
-  /** Current free-spins banner state. null when not in FS. */
-  const [fsState, setFsState] = useState<null | { spinsLeft: number; persistent: number[]; intro: boolean }>(null);
-  /** Final payout card (shown after settle). */
-  const [winCard, setWinCard] = useState<null | { multiplier: number; payoutNano: string; effectiveBetNano: string }>(null);
+  const [scatterCount, setScatterCount] = useState(0);
+  const [phase, setPhase] = useState<"idle" | "base" | "fs" | "big-win">("idle");
+  const [fsMeta, setFsMeta] = useState<null | { spinsTotal: number; spinIdx: number; fsMult: number }>(null);
+  const [bigWin, setBigWin] = useState<null | { tier: "big" | "super" | "mega"; multiplier: number }>(null);
+  const [showFsIntro, setShowFsIntro] = useState(false);
+  const [showFsOutro, setShowFsOutro] = useState<null | { totalMult: number }>(null);
+
+  // Win counter (counted up from 0 during settle)
+  const [winCounterUsd, setWinCounterUsd] = useState<number | null>(null);
+  const countRafRef = useRef<number | null>(null);
+
+  // Buy confirmation modal
+  const [showBuyModal, setShowBuyModal] = useState(false);
 
   const timers = useRef<number[]>([]);
   const clearTimers = () => {
     for (const t of timers.current) clearTimeout(t);
     timers.current = [];
+    if (countRafRef.current) cancelAnimationFrame(countRafRef.current);
+    countRafRef.current = null;
   };
   useEffect(() => () => clearTimers(), []);
 
-  // ──────────────────────────── play ────────────────────────────
+  // ────────────────────────── placing bets ──────────────────────────
 
-  const placeBet = async (nano: bigint, playMode: "spin" | "buy" = "spin"): Promise<AutoBetResult> => {
+  const callServer = async (mode: "spin" | "buy"): Promise<PlayResult> => {
+    if (usdPerTon == null) throw new Error("price_not_loaded");
+    const usd = parseFloat(bet);
+    if (!Number.isFinite(usd) || usd <= 0) throw new Error("bad_amount");
+    const baseNano = usdToNano(usd, usdPerTon);
+    // Pre-flight balance check in USD so we fail fast with a friendly message.
+    const effectiveMult = mode === "buy" ? SWASH_BONUS_BUY_COST : ante ? SWASH_ANTE_MULTIPLIER : 1;
+    const effectiveNano = BigInt(Math.round(Number(baseNano) * effectiveMult));
+    if (effectiveNano > balance) {
+      throw new ApiError("", "insufficient_balance", 409);
+    }
+    const res = await api<PlayResult>("/single/swashbooze/play", {
+      method: "POST",
+      body: JSON.stringify({
+        amountNano: baseNano.toString(),
+        mode,
+        ante: mode === "buy" ? false : ante,
+      }),
+    });
+    setBalance(BigInt(res.newBalanceNano));
+    return res;
+  };
+
+  const onSpin = async () => {
+    if (busy || rolling || usdPerTon == null) return;
     setBusy(true);
     haptic("light");
     try {
-      const r: PlayResult = await api("/single/swashbooze/play", {
-        method: "POST",
-        body: JSON.stringify({ amountNano: nano.toString(), mode: playMode }),
-      });
-      setBalance(BigInt(r.newBalanceNano));
-      animate(r);
-      notify(r.outcome.win ? "success" : "warning");
-      return {
-        win: r.outcome.win,
-        betNano: BigInt(r.betNano),
-        payoutNano: BigInt(r.payoutNano),
-      };
+      const r = await callServer("spin");
+      playOutcome(r);
+    } catch (err) {
+      notify("error");
+      onError?.(humanize(err));
     } finally {
       setBusy(false);
     }
   };
 
-  const spin = async () => {
-    const ton = parseFloat(amount);
-    if (!Number.isFinite(ton) || ton <= 0) { onError?.("Enter a bet amount"); return; }
-    const nano = tonToNano(ton);
-    if (nano > balance) { onError?.("Insufficient balance"); notify("error"); return; }
-    if (busy || rolling) return;
+  const onConfirmBuy = async () => {
+    setShowBuyModal(false);
+    if (busy || rolling || usdPerTon == null) return;
+    setBusy(true);
+    haptic("medium");
     try {
-      await placeBet(nano, "spin");
+      const r = await callServer("buy");
+      playOutcome(r);
     } catch (err) {
       notify("error");
       onError?.(humanize(err));
+    } finally {
+      setBusy(false);
     }
   };
 
-  const buyBonus = async () => {
-    const ton = parseFloat(amount);
-    if (!Number.isFinite(ton) || ton <= 0) { onError?.("Enter a bet amount"); return; }
-    const nano = tonToNano(ton);
-    const costNano = nano * BigInt(SWASH_BONUS_BUY_COST);
-    if (costNano > balance) { onError?.("Insufficient balance for bonus buy"); notify("error"); return; }
-    if (busy || rolling) return;
-    try {
-      await placeBet(nano, "buy");
-    } catch (err) {
-      notify("error");
-      onError?.(humanize(err));
-    }
-  };
-
-  function humanize(err: unknown): string {
+  const humanize = (err: unknown): string => {
     if (err instanceof ApiError) {
       switch (err.code) {
         case "insufficient_balance": return "Insufficient balance";
         case "rate_limited":         return "Slow down — wait a moment";
+        case "ante_disabled_with_buy": return "Turn off Double Chance to buy";
         case "invalid_params":       return "Invalid spin parameters";
         case "unauthenticated":      return "Session expired — reopen the app";
         case "http_502":
@@ -256,240 +179,426 @@ export function SwashBooze({ onBack, onError }: Props) {
         default:                     return `Spin failed (${err.code})`;
       }
     }
+    if (err instanceof Error && err.message === "price_not_loaded") return "Loading price…";
+    if (err instanceof Error && err.message === "bad_amount") return "Enter a bet amount";
     return "Spin failed. Check your connection.";
-  }
+  };
 
-  // ──────────────────────────── animation engine ────────────────────────────
+  // ────────────────────────── animation driver ──────────────────────────
 
-  const animate = (r: PlayResult) => {
+  const playOutcome = (r: PlayResult) => {
     clearTimers();
     setRolling(true);
-    setWinCard(null);
-    setWinCells(new Set());
-    setBombs([]);
-    setFsState(null);
+    setWinCounterUsd(null);
+    setBigWin(null);
+    setShowFsIntro(false);
+    setShowFsOutro(null);
 
-    let t = 0;
+    // Build the animation plan up-front, then schedule setTimeouts for each frame.
+    const plan: AnimFrame[] = [];
 
-    // Base-game steps
-    for (let i = 0; i < r.outcome.baseSteps.length; i++) {
-      const step = r.outcome.baseSteps[i]!;
-      timers.current.push(window.setTimeout(() => renderStep(step), t));
-      t += STEP_MS;
+    // Base-game tumble steps
+    for (const step of r.outcome.baseSteps) {
+      const bombRevealExtra = step.bombs.length > 0 ? BOMB_REVEAL_MS : 0;
+      const winBurstExtra = step.winningCells.length > 0 ? WIN_BURST_MS + TUMBLE_GAP_MS : 0;
+      const dropTime = COLUMN_STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS;
+      plan.push({ kind: "step", step, durMs: dropTime + bombRevealExtra + winBurstExtra });
     }
 
-    // Free spins
+    // Free-spins round
     if (r.outcome.freeSpins.triggered) {
-      timers.current.push(window.setTimeout(() => {
-        setFsState({ spinsLeft: SWASH_FREE_SPINS, persistent: [], intro: true });
-      }, t));
-      t += FS_INTRO_MS;
+      plan.push({ kind: "fs-intro", durMs: FS_INTRO_MS });
+      for (const fsSpin of r.outcome.freeSpins.spins) {
+        for (const step of fsSpin.steps) {
+          const bombRevealExtra = step.bombs.length > 0 ? BOMB_REVEAL_MS : 0;
+          const winBurstExtra = step.winningCells.length > 0 ? WIN_BURST_MS + TUMBLE_GAP_MS : 0;
+          const dropTime = COLUMN_STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS;
+          plan.push({ kind: "step", step, durMs: dropTime + bombRevealExtra + winBurstExtra });
+        }
+        plan.push({ kind: "step", step: null as unknown as SwashSpinStep, durMs: FS_BETWEEN_MS }); // pacing beat
+      }
+      plan.push({ kind: "fs-outro", totalMult: r.outcome.freeSpins.fsMultiplier, durMs: FS_OUTRO_MS });
+    }
 
-      const persistent: number[] = [];
-      for (let si = 0; si < r.outcome.freeSpins.spins.length; si++) {
-        const spin = r.outcome.freeSpins.spins[si]!;
-        for (let i = 0; i < spin.steps.length; i++) {
-          const step = spin.steps[i]!;
-          timers.current.push(window.setTimeout(() => {
-            // FS intro flag drops when the first real step lands.
-            setFsState((prev) => prev ? { ...prev, intro: false, spinsLeft: SWASH_FREE_SPINS - si } : prev);
-            renderStep(step);
-          }, t));
-          t += STEP_MS;
-        }
-        // After each FS's final step, push any new bombs into the persistent strip.
-        const newBombs = spin.steps.flatMap((s) => s.bombs.map((b) => b.value));
-        if (newBombs.length) {
-          timers.current.push(window.setTimeout(() => {
-            for (const v of newBombs) persistent.push(v);
-            const snap = persistent.slice();
-            setFsState((prev) => prev ? { ...prev, persistent: snap } : prev);
-          }, t));
-        }
-        t += FS_BETWEEN_MS;
+    // Big-win tier celebrations (driven by final multiplier relative to 1× stake)
+    const bigTier = bigWinTier(r.multiplier);
+    if (bigTier) {
+      plan.push({ kind: "big-win", tier: bigTier, multiplier: r.multiplier, durMs: BIG_WIN_MS });
+    }
+
+    // Schedule each frame
+    let cursor = 0;
+    let fsSpinCounter = 0;
+    const fsSpinTotal = r.outcome.freeSpins.spins.length;
+    let runningFsMult = 0;
+
+    for (const frame of plan) {
+      const at = cursor;
+      cursor += frame.durMs;
+
+      if (frame.kind === "step") {
+        timers.current.push(window.setTimeout(() => {
+          if (frame.step == null) return; // pacing beat
+          setGrid(frame.step.grid);
+          setBombs(frame.step.bombs);
+          setScatterCount(frame.step.scatterCount);
+          const ws = new Set<string>();
+          for (const c of frame.step.winningCells) ws.add(`${c.row},${c.col}`);
+          setWinCells(ws);
+          if (frame.step.stepMultiplier > 0) haptic("light");
+        }, at));
+        continue;
+      }
+      if (frame.kind === "fs-intro") {
+        timers.current.push(window.setTimeout(() => {
+          setPhase("fs");
+          setShowFsIntro(true);
+          setFsMeta({ spinsTotal: fsSpinTotal, spinIdx: 0, fsMult: 0 });
+          haptic("medium");
+        }, at));
+        timers.current.push(window.setTimeout(() => setShowFsIntro(false), at + frame.durMs - 200));
+        continue;
+      }
+      if (frame.kind === "fs-outro") {
+        timers.current.push(window.setTimeout(() => {
+          setShowFsOutro({ totalMult: frame.totalMult });
+          haptic("heavy");
+        }, at));
+        timers.current.push(window.setTimeout(() => setShowFsOutro(null), at + frame.durMs - 200));
+        continue;
+      }
+      if (frame.kind === "big-win") {
+        timers.current.push(window.setTimeout(() => {
+          setPhase("big-win");
+          setBigWin({ tier: frame.tier, multiplier: frame.multiplier });
+          haptic("heavy");
+        }, at));
+        timers.current.push(window.setTimeout(() => {
+          setBigWin(null);
+          setPhase("idle");
+        }, at + frame.durMs));
+        continue;
       }
     }
 
-    // Settle — show win card if any win, clear rolling state
-    timers.current.push(window.setTimeout(() => {
-      if (r.multiplier > 0) {
-        setWinCard({
-          multiplier: r.multiplier,
-          payoutNano: r.payoutNano,
-          effectiveBetNano: r.betNano,
-        });
+    // Advance FS spin counter + accumulate fsMult as each spin ends
+    let accumulatedTime = 0;
+    for (const step of r.outcome.baseSteps) {
+      const bombRevealExtra = step.bombs.length > 0 ? BOMB_REVEAL_MS : 0;
+      const winBurstExtra = step.winningCells.length > 0 ? WIN_BURST_MS + TUMBLE_GAP_MS : 0;
+      const dropTime = COLUMN_STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS;
+      accumulatedTime += dropTime + bombRevealExtra + winBurstExtra;
+    }
+    if (r.outcome.freeSpins.triggered) {
+      accumulatedTime += FS_INTRO_MS;
+      for (const fsSpin of r.outcome.freeSpins.spins) {
+        for (const step of fsSpin.steps) {
+          const bombRevealExtra = step.bombs.length > 0 ? BOMB_REVEAL_MS : 0;
+          const winBurstExtra = step.winningCells.length > 0 ? WIN_BURST_MS + TUMBLE_GAP_MS : 0;
+          const dropTime = COLUMN_STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS;
+          accumulatedTime += dropTime + bombRevealExtra + winBurstExtra;
+        }
+        // After this spin's last step, bump counter
+        fsSpinCounter++;
+        runningFsMult += fsSpin.spinWin;
+        const tick = fsSpinCounter;
+        const mult = runningFsMult;
+        timers.current.push(window.setTimeout(() => {
+          setFsMeta((prev) => prev ? { ...prev, spinIdx: tick, fsMult: mult } : prev);
+        }, accumulatedTime));
+        accumulatedTime += FS_BETWEEN_MS;
       }
-      setWinCells(new Set());
-      setBombs([]);
-      setFsState(null);
-      setRolling(false);
-    }, t));
+    }
 
-    // Clear the win card after a beat
+    // Final settle — count up win, reset flags
+    const finalAt = cursor;
     timers.current.push(window.setTimeout(() => {
-      setWinCard(null);
-    }, t + WIN_CARD_MS));
+      setRolling(false);
+      setWinCells(new Set());
+      setScatterCount(0);
+      setPhase("idle");
+      setFsMeta(null);
+      // Count up win amount from 0 → total USD over COUNTUP_DUR_MS
+      if (r.multiplier > 0 && usdPerTon != null) {
+        const usd = nanoToUsd(BigInt(r.payoutNano), usdPerTon);
+        animateCountUp(usd);
+      } else {
+        setWinCounterUsd(null);
+      }
+    }, finalAt));
   };
 
-  const renderStep = (step: SwashSpinStep) => {
-    setGrid(step.grid);
-    setBombs(step.bombs);
-    const cells = new Set<string>();
-    for (const c of step.winningCells) cells.add(`${c.row},${c.col}`);
-    setWinCells(cells);
+  const animateCountUp = (targetUsd: number) => {
+    const start = performance.now();
+    const step = (t: number) => {
+      const p = Math.min(1, (t - start) / COUNTUP_DUR_MS);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setWinCounterUsd(targetUsd * eased);
+      if (p < 1) countRafRef.current = requestAnimationFrame(step);
+      else countRafRef.current = null;
+    };
+    countRafRef.current = requestAnimationFrame(step);
   };
 
-  // ──────────────────────────── bet helpers ────────────────────────────
+  // ────────────────────────── bet controls ──────────────────────────
 
-  const setAmountNano = (nano: bigint) => {
-    if (nano <= 0n) { setAmount("0"); return; }
-    setAmount(nanoToTonDisplay(nano));
+  const balUsd = usdPerTon != null ? nanoToUsd(balance, usdPerTon) : 0;
+  const betUsd = parseFloat(bet) || 0;
+  const buyCostUsd = betUsd * SWASH_BONUS_BUY_COST;
+  const antePremiumUsd = betUsd * 0.25;
+
+  const BET_STEPS = [0.20, 0.40, 0.80, 1.00, 2.00, 5.00, 10.00, 20.00, 50.00, 100.00];
+  const currentStep = BET_STEPS.findIndex((v) => v >= betUsd);
+
+  const decBet = () => {
+    const idx = currentStep <= 0 ? 0 : currentStep - 1;
+    setBet(BET_STEPS[idx]!.toFixed(2));
   };
-  const half = () => setAmountNano(tonToNano(parseFloat(amount) || 0) / 2n);
-  const double = () => {
-    const doubled = tonToNano(parseFloat(amount) || 0) * 2n;
-    setAmountNano(doubled > balance ? balance : doubled);
+  const incBet = () => {
+    const idx = currentStep < 0 ? BET_STEPS.length - 1 : Math.min(currentStep + 1, BET_STEPS.length - 1);
+    setBet(BET_STEPS[idx]!.toFixed(2));
   };
-  const maxBet = () => setAmountNano(balance);
 
-  const betReady = !busy && !rolling && (parseFloat(amount) || 0) > 0;
-  const buyCostTon = (parseFloat(amount) || 0) * SWASH_BONUS_BUY_COST;
-  const buyAffordable = tonToNano(buyCostTon) <= balance;
-
-  // AutoPanel needs a non-generic settle — rough average (base game, no FS).
-  const settleDelayMs = useMemo(() => 1800, []);
+  // ────────────────────────── render ──────────────────────────
 
   return (
-    <div className="sg-screen">
-      <div className="sg-head">
+    <div className="sg-screen swash-screen">
+      {/* Header bar — back + title + settings */}
+      <div className="sg-head swash-head">
         <button className="stake-game-back" onClick={onBack} type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
           Back
         </button>
-        <div className="sg-title">Swash Booze</div>
-        {/* Reserve the right slot so the title stays centered. */}
-        <div style={{ width: 60 }} />
+        <div className="swash-logo">Swash Booze</div>
+        <button
+          type="button"
+          className="sg-head-btn swash-sound-btn"
+          onClick={() => setSoundOn((s) => !s)}
+          aria-label={soundOn ? "Mute" : "Unmute"}
+        >
+          {soundOn ? "🔊" : "🔇"}
+        </button>
       </div>
 
-      <div className="sg-stage swash-stage">
-        {/* persistent multipliers during FS */}
-        {fsState && (
-          <div className="swash-fs-bar">
-            <span className="swash-fs-bar-label">
-              Free Spins · {fsState.spinsLeft}/{SWASH_FREE_SPINS}
-            </span>
-            {fsState.persistent.length > 0 && (
-              <span className="swash-fs-bar-multis">
-                {fsState.persistent.map((v, i) => (
-                  <span key={i} className="swash-fs-bar-multi">{v}×</span>
-                ))}
+      {/* Candy-world stage */}
+      <div className={`swash-stage ${phase === "fs" ? "is-fs" : ""}`}>
+        {/* Decorative clouds */}
+        <div className="swash-cloud swash-cloud-1" aria-hidden />
+        <div className="swash-cloud swash-cloud-2" aria-hidden />
+        <div className="swash-cloud swash-cloud-3" aria-hidden />
+
+        {/* Side panels — left */}
+        <div className="swash-side swash-side-left">
+          <button
+            type="button"
+            className="swash-buy-card"
+            onClick={() => {
+              if (ante) { onError?.("Turn off Double Chance to buy"); return; }
+              if (busy || rolling) return;
+              setShowBuyModal(true);
+            }}
+            disabled={busy || rolling}
+          >
+            <div className="swash-buy-card-label">BUY<br />FEATURE</div>
+            <div className="swash-buy-card-price">{fmtUsd(buyCostUsd)}</div>
+          </button>
+
+          <div className="swash-ante-card">
+            <div className="swash-ante-card-label">BET</div>
+            <div className="swash-ante-card-price">{fmtUsd(betUsd + antePremiumUsd)}</div>
+            <div className="swash-ante-card-sub">DOUBLE<br />CHANCE TO<br />WIN FEATURE</div>
+            <button
+              type="button"
+              className={`swash-ante-toggle ${ante ? "is-on" : ""}`}
+              onClick={() => setAnte((a) => !a)}
+              disabled={busy || rolling}
+              aria-pressed={ante}
+            >
+              <span className="swash-ante-toggle-thumb" />
+              <span className="swash-ante-toggle-label">{ante ? "ON" : "OFF"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Game grid container with dashed candy border */}
+        <div className="swash-grid-frame">
+          <div className="swash-grid">
+            {grid.map((row, r) => row.map((sym, c) => {
+              const key = `${r},${c}`;
+              const isWin = winCells.has(key);
+              const bomb = bombs.find((b) => b.row === r && b.col === c);
+              return (
+                <div
+                  key={key}
+                  className={`swash-cell ${isWin ? "is-win" : ""}`}
+                  style={{
+                    // Column-stagger drop — each cell delays by its column index.
+                    animationDelay: `${c * COLUMN_STAGGER_MS}ms`,
+                  }}
+                >
+                  {bomb ? (
+                    <SwashBombIcon value={bomb.value} winning={isWin} />
+                  ) : (
+                    <SwashSymbolIcon symbol={sym} winning={isWin} />
+                  )}
+                  {isWin && <div className="swash-cell-burst" aria-hidden />}
+                </div>
+              );
+            }))}
+          </div>
+
+          {/* Scatter counter (base-game only) */}
+          {phase !== "fs" && scatterCount > 0 && scatterCount < SWASH_SCATTERS_TO_TRIGGER && !rolling && (
+            <div className="swash-scatter-counter">
+              {scatterCount}/{SWASH_SCATTERS_TO_TRIGGER} scatters
+            </div>
+          )}
+
+          {/* FS intro banner */}
+          {showFsIntro && (
+            <div className="swash-fs-intro">
+              <div className="swash-fs-intro-top">FREE SPINS</div>
+              <div className="swash-fs-intro-big">{SWASH_FREE_SPINS}</div>
+              <div className="swash-fs-intro-bottom">BONUS TRIGGERED</div>
+            </div>
+          )}
+
+          {/* FS header bar when a FS round is active */}
+          {phase === "fs" && fsMeta && !showFsIntro && (
+            <div className="swash-fs-bar">
+              <span className="swash-fs-bar-spins">
+                FREE SPINS <strong>{fsMeta.spinsTotal - fsMeta.spinIdx}</strong>
               </span>
-            )}
-          </div>
-        )}
-
-        <div className="swash-grid">
-          {grid.map((row, r) => row.map((sym, c) => {
-            const key = `${r},${c}`;
-            const isWin = winCells.has(key);
-            const bomb = bombs.find((b) => b.row === r && b.col === c);
-            return (
-              <div key={key} className={`swash-cell ${isWin ? "is-win" : ""}`}>
-                <SymbolIcon s={sym} />
-                {bomb && (
-                  <div className="swash-bomb-overlay">{bomb.value}×</div>
-                )}
-              </div>
-            );
-          }))}
-        </div>
-
-        {fsState?.intro && (
-          <div className="swash-fs-intro">
-            <div className="swash-fs-intro-big">10</div>
-            <div className="swash-fs-intro-sub">Free Spins</div>
-          </div>
-        )}
-
-        {winCard && !rolling && (
-          <div className="swash-win-card">
-            <div className="swash-win-card-mult">{winCard.multiplier.toFixed(2)}×</div>
-            <div className="swash-win-card-divider" />
-            <div className="swash-win-card-amount">
-              +{fmtTon(BigInt(winCard.payoutNano) - BigInt(winCard.effectiveBetNano))}
+              <span className="swash-fs-bar-win">
+                WIN <strong>{fmtUsd(fsMeta.fsMult * betUsd)}</strong>
+              </span>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* FS outro */}
+          {showFsOutro && (
+            <div className="swash-fs-outro">
+              <div className="swash-fs-outro-label">FEATURE WIN</div>
+              <div className="swash-fs-outro-amount">
+                {fmtUsd(showFsOutro.totalMult * betUsd)}
+              </div>
+            </div>
+          )}
+
+          {/* Big / Super / Mega Win */}
+          {bigWin && (
+            <div className={`swash-big-win is-${bigWin.tier}`}>
+              <div className="swash-big-win-label">
+                {bigWin.tier === "mega" ? "MEGA WIN" : bigWin.tier === "super" ? "SUPER WIN" : "BIG WIN"}
+              </div>
+              <div className="swash-big-win-amount">
+                {fmtUsd(bigWin.multiplier * betUsd)}
+              </div>
+            </div>
+          )}
+
+          {/* Win counter (after settle) */}
+          {winCounterUsd != null && phase === "idle" && !bigWin && (
+            <div className="swash-win-counter">
+              {fmtUsd(winCounterUsd)}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="sg-panel">
-        <div className="sg-mode">
-          <button
-            type="button"
-            className={`sg-mode-btn ${mode === "manual" ? "is-active" : ""}`}
-            onClick={() => setMode("manual")}
-          >
-            Manual
-          </button>
-          <button
-            type="button"
-            className={`sg-mode-btn ${mode === "auto" ? "is-active" : ""}`}
-            onClick={() => setMode("auto")}
-          >
-            Auto
-          </button>
+      {/* Bottom HUD — bet controls, credit, spin wheel */}
+      <div className="swash-hud">
+        <div className="swash-hud-left">
+          <div className="swash-hud-credit">
+            <span className="swash-hud-credit-label">CREDIT</span>
+            <span className="swash-hud-credit-value">{fmtUsd(balUsd)}</span>
+          </div>
+          <div className="swash-hud-bet">
+            <span className="swash-hud-bet-label">BET</span>
+            <span className="swash-hud-bet-value">{fmtUsd(betUsd * (ante ? SWASH_ANTE_MULTIPLIER : 1))}</span>
+          </div>
         </div>
 
-        {mode === "manual" ? (
-          <>
-            <div className="sg-field">
-              <div className="sg-field-head">
-                <span>Bet amount</span>
-              </div>
-              <div className="sg-input-row">
-                <input
-                  className="sg-input"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.1"
-                  min="0"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                />
-                <button className="sg-input-btn" onClick={half} type="button">½</button>
-                <button className="sg-input-btn" onClick={double} type="button">2×</button>
-                <button className="sg-input-btn" onClick={maxBet} type="button">Max</button>
-              </div>
-            </div>
+        <button
+          type="button"
+          className="swash-bet-btn swash-bet-minus"
+          onClick={decBet}
+          disabled={busy || rolling}
+          aria-label="Decrease bet"
+        >−</button>
 
-            <div className="swash-buttons">
-              <button className="sg-cta" onClick={spin} disabled={!betReady} type="button">
-                {busy || rolling ? "Spinning…" : "Spin"}
+        <button
+          type="button"
+          className={`swash-spin-btn ${busy || rolling ? "is-spinning" : ""}`}
+          onClick={onSpin}
+          disabled={busy || rolling}
+          aria-label="Spin"
+        >
+          <svg viewBox="0 0 100 100" width="78" height="78">
+            <circle cx="50" cy="50" r="45" fill="#ffd54a" stroke="#b6730b" strokeWidth="3" />
+            <circle cx="50" cy="50" r="35" fill="#ff8f1f" />
+            <path
+              d="M50 24 A 26 26 0 0 1 76 50 L 68 50 L 80 62 L 92 50 L 84 50 A 34 34 0 0 0 50 16 Z"
+              fill="#ffffff"
+            />
+            <path
+              d="M50 76 A 26 26 0 0 1 24 50 L 32 50 L 20 38 L 8 50 L 16 50 A 34 34 0 0 0 50 84 Z"
+              fill="#ffffff"
+            />
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          className="swash-bet-btn swash-bet-plus"
+          onClick={incBet}
+          disabled={busy || rolling}
+          aria-label="Increase bet"
+        >+</button>
+      </div>
+
+      {/* Buy confirmation modal */}
+      {showBuyModal && (
+        <div className="swash-buy-modal-bg" onClick={() => setShowBuyModal(false)}>
+          <div className="swash-buy-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="swash-buy-modal-title">Buy Bonus Round?</div>
+            <div className="swash-buy-modal-body">
+              Get {SWASH_FREE_SPINS} free spins immediately. Multiplier bombs
+              only land during free spins.
+            </div>
+            <div className="swash-buy-modal-cost">
+              <span className="swash-buy-modal-cost-label">Cost</span>
+              <span className="swash-buy-modal-cost-value">{fmtUsd(buyCostUsd)}</span>
+            </div>
+            <div className="swash-buy-modal-actions">
+              <button
+                type="button"
+                className="swash-buy-modal-cancel"
+                onClick={() => setShowBuyModal(false)}
+              >
+                Cancel
               </button>
               <button
-                className="sg-cta swash-buy"
-                onClick={buyBonus}
-                disabled={!betReady || !buyAffordable}
                 type="button"
+                className="swash-buy-modal-confirm"
+                onClick={onConfirmBuy}
+                disabled={buyCostUsd > balUsd}
               >
-                Buy Bonus · {buyCostTon.toFixed(2).replace(/\.?0+$/, "")}
+                {buyCostUsd > balUsd ? "Low balance" : "Confirm"}
               </button>
             </div>
-          </>
-        ) : (
-          <AutoPanel
-            balance={balance}
-            settleDelayMs={settleDelayMs}
-            initialAmount={amount}
-            onAmountChange={setAmount}
-            placeBet={(nano) => placeBet(nano, "spin")}
-            onError={(m) => onError?.(m)}
-            locked={rolling}
-          />
-        )}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function bigWinTier(multiplier: number): "big" | "super" | "mega" | null {
+  if (multiplier >= 50) return "mega";
+  if (multiplier >= 25) return "super";
+  if (multiplier >= 10) return "big";
+  return null;
 }

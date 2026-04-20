@@ -2340,13 +2340,208 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   background: var(--c-bg);
 }
 
-/* ============ Swash Booze slot ============ */
+/* ============ Swash Booze slot — Sweet Bonanza-style ============ */
+
+/* The slot takes over the whole shell screen with its candy-world background,
+   overriding the usual sg-screen padding rhythm. */
+.swash-screen {
+  padding: 0 !important;
+  background:
+    linear-gradient(180deg,
+      #64b5ff 0%,
+      #7fc4ff 35%,
+      #ffb4d6 65%,
+      #ff8ec5 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Header row — back button + title + sound toggle over candy sky. */
+.swash-head {
+  background: linear-gradient(180deg, rgba(11, 16, 20, 0.5), rgba(11, 16, 20, 0.05));
+  padding: 8px var(--shell-pad-x);
+  z-index: 2;
+  position: relative;
+}
+.swash-head .stake-game-back { color: #fff; }
+.swash-head .sg-head-btn { color: #fff; }
+.swash-logo {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.02em;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.swash-sound-btn {
+  font-size: 16px;
+}
+
+/* Main stage — the candy world. */
 .swash-stage {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: 1fr;
+  gap: 6px;
+  padding: 8px 6px 0;
+  position: relative;
+  overflow: hidden;
+  background: transparent;
+  transition: background var(--t-md);
+}
+.swash-stage.is-fs {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(112, 54, 200, 0.35) 0%,
+    rgba(56, 20, 120, 0.55) 70%,
+    rgba(30, 10, 80, 0.75) 100%);
+}
+
+/* Decorative clouds — pure CSS blobs, different sizes & positions. */
+.swash-cloud {
+  position: absolute;
+  background:
+    radial-gradient(ellipse at 30% 40%, #ffffff 0%, #ffd8ec 60%, transparent 100%);
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.85;
+  filter: blur(1px);
+  z-index: 0;
+}
+.swash-cloud-1 { top: 5%;  left: 2%;  width: 140px; height: 60px; }
+.swash-cloud-2 { top: 12%; right: 8%; width: 180px; height: 70px; opacity: 0.7; }
+.swash-cloud-3 { bottom: 22%; right: 2%; width: 120px; height: 50px; opacity: 0.8; }
+
+/* Left side panels — Buy Feature + Ante (Double Chance). */
+.swash-side {
+  display: flex;
   flex-direction: column;
-  padding: 12px 10px 16px;
-  gap: 10px;
-  background: var(--c-surface);
-  min-height: 340px;
+  gap: 6px;
+  z-index: 1;
+  width: 72px;
+  padding-top: 8px;
+}
+.swash-side-left { grid-column: 1; }
+
+.swash-buy-card {
+  background: linear-gradient(180deg, #ff6fa8, #d93b7d);
+  border: 3px solid #fff;
+  border-radius: 12px;
+  padding: 10px 6px 8px;
+  text-align: center;
+  cursor: pointer;
+  transition: transform var(--t-xs);
+  color: #fff;
+  font-family: inherit;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25), inset 0 -3px 0 rgba(0, 0, 0, 0.15);
+}
+.swash-buy-card:hover:not(:disabled) { transform: translateY(-1px); }
+.swash-buy-card:disabled { opacity: 0.55; cursor: not-allowed; }
+.swash-buy-card-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1.1;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+.swash-buy-card-price {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+.swash-ante-card {
+  background: linear-gradient(180deg, #6fe063, #3aa82c);
+  border: 3px solid #ffd54a;
+  border-radius: 12px;
+  padding: 8px 6px;
+  text-align: center;
+  color: #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25), inset 0 -3px 0 rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.swash-ante-card-label {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+.swash-ante-card-price {
+  font-size: 14px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: #ff4b4b;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+}
+.swash-ante-card-sub {
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.03em;
+}
+.swash-ante-toggle {
+  margin-top: 4px;
+  width: 58px;
+  height: 22px;
+  border: 2px solid #ffd54a;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #b0e694, #7ac856);
+  position: relative;
+  cursor: pointer;
+  font-family: inherit;
+  color: #fff;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 6px;
+}
+.swash-ante-toggle.is-on {
+  background: linear-gradient(180deg, #ffe27a, #f5b623);
+  color: #6a3d00;
+  justify-content: flex-start;
+  padding-right: 0;
+  padding-left: 6px;
+}
+.swash-ante-toggle-thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  transition: transform var(--t-sm);
+}
+.swash-ante-toggle.is-on .swash-ante-toggle-thumb {
+  transform: translateX(36px);
+}
+.swash-ante-toggle-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+}
+
+/* Grid frame — dashed candy-stripe border wrapper. */
+.swash-grid-frame {
+  grid-column: 2;
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 235, 245, 0.75));
+  border-radius: 16px;
+  padding: 8px;
+  border: 4px dashed #ff4b7a;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15), inset 0 0 0 2px #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .swash-grid {
@@ -2355,181 +2550,454 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   grid-template-rows: repeat(5, 1fr);
   gap: 4px;
   width: 100%;
-  max-width: 420px;
+  aspect-ratio: 6 / 5;
 }
 
 .swash-cell {
   position: relative;
   aspect-ratio: 1 / 1;
-  background: var(--c-bg);
-  border: 1px solid var(--c-border);
-  border-radius: var(--rr-sm);
-  padding: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--t-xs), border-color var(--t-xs), transform var(--t-xs);
+  animation: swash-drop 420ms cubic-bezier(.5, 0, .3, 1.2) both;
 }
-.swash-cell svg {
+@keyframes swash-drop {
+  0%   { transform: translateY(-220%); opacity: 0; }
+  70%  { transform: translateY(8%);    opacity: 1; }
+  85%  { transform: translateY(-3%); }
+  100% { transform: translateY(0);     opacity: 1; }
+}
+
+.swash-sym-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+  transition: transform var(--t-xs);
+}
+.swash-sym {
   width: 100%;
   height: 100%;
   display: block;
 }
-.swash-cell.is-win {
-  border-color: var(--c-accent);
-  background: var(--c-accent-wash);
-  animation: swash-cell-pop 250ms var(--ease);
+.swash-sym-wrap.is-winning {
+  animation: swash-win-pulse 520ms cubic-bezier(.25, .8, .3, 1.1);
   z-index: 2;
 }
-@keyframes swash-cell-pop {
-  0%   { transform: scale(1);   box-shadow: 0 0 0 0 rgba(76, 184, 255, 0); }
-  60%  { transform: scale(1.08); box-shadow: 0 0 10px 2px rgba(76, 184, 255, 0.35); }
-  100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(76, 184, 255, 0); }
+@keyframes swash-win-pulse {
+  0%   { transform: scale(1);    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35)); }
+  25%  { transform: scale(1.18); filter: drop-shadow(0 0 18px #ffe27a) drop-shadow(0 0 8px #fff); }
+  60%  { transform: scale(1.08); }
+  100% { transform: scale(0);    opacity: 0; }
 }
 
-/* Bomb multiplier chip — sits on the cell's corner like an achievement badge. */
-.swash-bomb-overlay {
+/* Candy burst on winning cells — four star-particles radiating outward. */
+.swash-cell-burst {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  background: var(--c-accent);
-  color: var(--c-bg);
-  font-size: 10px;
-  font-weight: 800;
-  padding: 1px 4px;
-  border-radius: var(--rr-xs);
-  font-variant-numeric: tabular-nums;
+  inset: 0;
   pointer-events: none;
-  animation: swash-bomb-in 220ms var(--ease);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.85) 0%, transparent 35%);
+  animation: swash-burst 450ms ease-out;
+  z-index: 3;
 }
-@keyframes swash-bomb-in {
-  0%   { transform: scale(0); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
+.swash-cell-burst::before,
+.swash-cell-burst::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffe27a;
+  box-shadow:
+    18px -18px 0 #ff4b7a,
+   -18px  18px 0 #4cb8ff,
+    20px  15px 0 #6fe063,
+   -20px -12px 0 #c24bff;
+  transform: translate(-50%, -50%) scale(0);
+  animation: swash-particles 500ms ease-out forwards;
+}
+.swash-cell-burst::after {
+  animation-delay: 60ms;
+  box-shadow:
+    -22px -10px 0 #ffd54a,
+     14px  22px 0 #ef3357;
+}
+@keyframes swash-burst {
+  0%   { opacity: 0; transform: scale(0.6); }
+  30%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.4); }
+}
+@keyframes swash-particles {
+  0%   { transform: translate(-50%, -50%) scale(0);   opacity: 1; }
+  60%  { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
 }
 
-/* Free spins banner at the top of the stage. */
-.swash-fs-bar {
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  background: var(--c-bg);
-  border: 1px solid var(--c-accent);
-  border-radius: var(--rr-sm);
-  padding: 8px 12px;
-}
-.swash-fs-bar-label {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--c-accent-hi);
-  letter-spacing: 0.02em;
-}
-.swash-fs-bar-multis {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.swash-fs-bar-multi {
-  background: var(--c-accent-wash);
-  color: var(--c-accent-hi);
-  font-size: 10px;
+/* Scatter counter badge in base game. */
+.swash-scatter-counter {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(255, 75, 122, 0.95);
+  color: #fff;
+  font-size: 11px;
   font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  padding: 2px 6px;
-  border-radius: var(--rr-xs);
+  padding: 4px 10px;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  z-index: 4;
+  animation: swash-scatter-pulse 1s ease-in-out infinite;
+}
+@keyframes swash-scatter-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
 }
 
-/* Intro overlay when FS triggers. */
+/* FS intro — giant "FREE SPINS 10" banner. */
 .swash-fs-intro {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  padding: 20px 36px;
-  background: var(--c-surface);
-  border: 2px solid var(--c-accent);
-  border-radius: var(--rr);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  z-index: 4;
-  animation: keno-win-pop 320ms var(--ease);
+  padding: 20px 40px;
+  background: linear-gradient(180deg, #ffd54a, #f5b623);
+  border: 4px solid #fff;
+  border-radius: 20px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    0 0 0 6px rgba(255, 75, 122, 0.6),
+    0 0 40px rgba(255, 213, 74, 0.9);
+  z-index: 8;
+  text-align: center;
+  color: #5a2a00;
+  animation: swash-fs-intro-pop 500ms cubic-bezier(.2, 1.3, .3, 1);
   pointer-events: none;
 }
-.swash-fs-intro-big {
-  font-size: 44px;
-  font-weight: 700;
-  color: var(--c-accent);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
+@keyframes swash-fs-intro-pop {
+  0%   { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+  60%  { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1);   opacity: 1; }
 }
-.swash-fs-intro-sub {
-  font-size: 12px;
-  color: var(--c-text-2);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.swash-fs-intro-top {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+.swash-fs-intro-big {
+  font-size: 72px;
+  font-weight: 900;
+  line-height: 1;
+  margin: 4px 0;
+  color: #fff;
+  text-shadow:
+    0 0 10px #ff4b7a,
+    0 4px 0 #c0164a,
+    0 5px 6px rgba(0, 0, 0, 0.4);
+}
+.swash-fs-intro-bottom {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
 }
 
-/* Win card — matches .keno-win-card pattern. */
-.swash-win-card {
+/* FS header bar inside the grid frame — spins remaining + running win. */
+.swash-fs-bar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 14px;
+  padding: 4px 14px;
+  background: linear-gradient(180deg, #7a3dd9, #4a1d8a);
+  border: 2px solid #ffd54a;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  z-index: 4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.swash-fs-bar strong { color: #ffe27a; font-weight: 900; }
+
+/* FS outro summary. */
+.swash-fs-outro {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  min-width: 160px;
-  padding: 18px 22px;
-  background: var(--c-surface);
-  border: 2px solid var(--c-win);
-  border-radius: var(--rr);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  z-index: 3;
+  padding: 24px 40px;
+  background: linear-gradient(180deg, #6fe063, #3aa82c);
+  border: 4px solid #fff;
+  border-radius: 20px;
+  text-align: center;
+  z-index: 8;
+  color: #fff;
+  animation: swash-fs-intro-pop 400ms cubic-bezier(.2, 1.2, .3, 1);
   pointer-events: none;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 0 24px rgba(95, 216, 140, 0.2);
-  animation: keno-win-pop 280ms var(--ease);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 40px rgba(95, 216, 140, 0.6);
 }
-.swash-win-card-mult {
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--c-win);
+.swash-fs-outro-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.swash-fs-outro-amount {
+  font-size: 36px;
+  font-weight: 900;
+  margin-top: 4px;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-.swash-win-card-divider {
-  width: 80%;
-  height: 1px;
-  background: var(--c-border-2);
-}
-.swash-win-card-amount {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--c-win);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
+  text-shadow: 0 3px 0 #1f5f25, 0 4px 6px rgba(0, 0, 0, 0.3);
 }
 
-/* Spin + Buy Bonus side-by-side CTAs. */
-.swash-buttons {
+/* Big / Super / Mega Win celebration. Center-screen takeover. */
+.swash-big-win {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 28px 48px;
+  border-radius: 24px;
+  text-align: center;
+  z-index: 9;
+  color: #fff;
+  pointer-events: none;
+  animation: swash-big-win-pop 600ms cubic-bezier(.2, 1.4, .3, 1);
+}
+.swash-big-win.is-big {
+  background: linear-gradient(180deg, #4cb8ff, #2375c8);
+  border: 4px solid #fff;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 50px rgba(76, 184, 255, 0.8);
+}
+.swash-big-win.is-super {
+  background: linear-gradient(180deg, #ff9a3c, #e85d00);
+  border: 4px solid #fff;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 60px rgba(255, 154, 60, 0.9);
+}
+.swash-big-win.is-mega {
+  background: linear-gradient(180deg, #ffd54a, #ff4b7a);
+  border: 4px solid #fff;
+  box-shadow: 0 8px 50px rgba(0, 0, 0, 0.6), 0 0 80px rgba(255, 213, 74, 1);
+}
+@keyframes swash-big-win-pop {
+  0%   { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+  50%  { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1);   opacity: 1; }
+}
+.swash-big-win-label {
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35), 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+.swash-big-win-amount {
+  font-size: 48px;
+  font-weight: 900;
+  line-height: 1;
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.35), 0 6px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* Idle post-spin win counter — shown after settle when no Big Win tier hit. */
+.swash-win-counter {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 18px;
+  background: rgba(95, 216, 140, 0.95);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  z-index: 4;
+  animation: swash-fs-intro-pop 300ms var(--ease);
+}
+
+/* Bottom HUD — credit, bet, spin wheel + ± controls. */
+.swash-hud {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px var(--shell-pad-x) calc(10px + var(--safe-bottom));
+  background: linear-gradient(180deg, rgba(11, 16, 20, 0.75), rgba(11, 16, 20, 0.95));
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 2;
+}
+.swash-hud-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.swash-hud-credit,
+.swash-hud-bet {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.swash-hud-credit-label,
+.swash-hud-bet-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #ffe27a;
+  letter-spacing: 0.06em;
+}
+.swash-hud-credit-value,
+.swash-hud-bet-value {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.swash-bet-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--t-xs), transform var(--t-xs);
+}
+.swash-bet-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.2); }
+.swash-bet-btn:active:not(:disabled) { transform: scale(0.95); }
+.swash-bet-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Giant spin wheel — orange circular button with reload arrows. */
+.swash-spin-btn {
+  width: 78px;
+  height: 78px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.45));
+  transition: transform var(--t-xs);
+}
+.swash-spin-btn:hover:not(:disabled) { transform: scale(1.05); }
+.swash-spin-btn:active:not(:disabled) { transform: scale(0.95); }
+.swash-spin-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.swash-spin-btn.is-spinning svg { animation: swash-spin-rotate 0.8s linear infinite; }
+@keyframes swash-spin-rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* Buy confirmation modal. */
+.swash-buy-modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  animation: fade-in 150ms ease;
+  padding: var(--shell-pad-x);
+}
+.swash-buy-modal {
+  background: linear-gradient(180deg, #2a1240, #14081e);
+  border: 3px solid #ffd54a;
+  border-radius: 16px;
+  padding: 24px 22px 20px;
+  width: 100%;
+  max-width: 340px;
+  text-align: center;
+  color: #fff;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(255, 213, 74, 0.3);
+  animation: swash-fs-intro-pop 280ms cubic-bezier(.2, 1.3, .3, 1);
+}
+.swash-buy-modal-title {
+  font-size: 20px;
+  font-weight: 900;
+  color: #ffd54a;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.swash-buy-modal-body {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.85);
+}
+.swash-buy-modal-cost {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+.swash-buy-modal-cost-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.04em;
+}
+.swash-buy-modal-cost-value {
+  font-size: 18px;
+  font-weight: 900;
+  color: #ff6fa8;
+  font-variant-numeric: tabular-nums;
+}
+.swash-buy-modal-actions {
+  margin-top: 16px;
   display: flex;
   gap: 8px;
 }
-.swash-buttons .sg-cta {
-  flex: 1 1 0;
-  min-width: 0;
+.swash-buy-modal-cancel,
+.swash-buy-modal-confirm {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform var(--t-xs), background var(--t-xs);
 }
-.swash-buy {
-  background: var(--c-warn);
-  color: var(--c-bg);
-  font-size: 13px;
-  white-space: nowrap;
+.swash-buy-modal-cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
-.swash-buy:hover:not(:disabled) { background: #f5b660; }
+.swash-buy-modal-cancel:hover { background: rgba(255, 255, 255, 0.15); }
+.swash-buy-modal-confirm {
+  background: linear-gradient(180deg, #ff6fa8, #d93b7d);
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.swash-buy-modal-confirm:hover:not(:disabled) { transform: translateY(-1px); }
+.swash-buy-modal-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
 
 /* ============ Fairness drawer ============ */
 .fair-body { display: flex; flex-direction: column; gap: 10px; }
