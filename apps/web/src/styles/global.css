@@ -2077,40 +2077,45 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   line-height: 1;
 }
 
+/* Compact paytable row — sits tight under the grid like Stake. */
 .keno-paytable {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+  gap: 4px;
   padding: 0 var(--shell-pad-x);
-  margin-top: 10px;
+  margin-top: 6px;
 }
 .keno-paytable-cell {
   background: var(--c-surface);
   border: 1px solid var(--c-border);
-  border-radius: var(--rr-sm);
-  padding: 7px 6px;
+  border-radius: var(--rr-xs);
+  padding: 4px 2px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  transition: background var(--t-sm), border-color var(--t-sm), transform var(--t-sm);
+  gap: 1px;
+  transition: background var(--t-sm), border-color var(--t-sm);
+  min-width: 0;
 }
 .keno-paytable-cell.is-active {
   background: var(--c-accent-wash);
   border-color: var(--c-accent);
-  transform: translateY(-1px);
 }
 .keno-paytable-mult {
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--c-text);
   font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 .keno-paytable-cell.is-active .keno-paytable-mult { color: var(--c-accent-hi); }
 .keno-paytable-hits {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--c-text-3);
   font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .keno-risk-tabs {

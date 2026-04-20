@@ -327,7 +327,7 @@ export function Keno({ onBack, onError, onOpenFairness }: Props) {
             return (
               <div key={hits} className={`keno-paytable-cell ${active ? "is-active" : ""}`}>
                 <div className="keno-paytable-mult">{m.toFixed(2)}×</div>
-                <div className="keno-paytable-hits">{hits} hit{hits === 1 ? "" : "s"}</div>
+                <div className="keno-paytable-hits">{hits}×</div>
               </div>
             );
           })}
