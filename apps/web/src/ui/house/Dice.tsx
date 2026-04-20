@@ -208,28 +208,52 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
   };
 
   // Commit an edited multiplier: invert the formula to find the target that
-  // yields that multiplier on the current side. Cap at 100× (equivalent to
-  // win chance 0.99% — the thinnest target the slider can physically hit).
-  const MAX_MULT = 100;
+  // yields that multiplier. At very high multipliers the chance is < 1%,
+  // which is only reachable in *one* of the two sides (over-mode maxes out
+  // at 99× via target 98.99). If the requested multiplier can't be hit on
+  // the current side, auto-flip to the opposite side so the user gets what
+  // they typed instead of a silently clamped value.
+  //
+  // Hard ceiling is DICE_MAX_TARGET / DICE_MIN_TARGET ≈ 9900× (0.01% chance
+  // under-mode at target 0.01). Typing higher snaps to that maximum.
   const commitMult = () => {
     const m = parseFloat(multStr);
     if (!Number.isFinite(m) || m <= 1) { setMultStr(mult.toFixed(2)); return; }
-    const clampedMult = Math.min(MAX_MULT, m);
-    const newChance = HOUSE_RTP / clampedMult;
-    const pct = Math.max(0, Math.min(1, newChance)) * 100;
-    const newTarget = over ? DICE_MAX_TARGET + DICE_MIN_TARGET - pct : pct;
+    const newChance = HOUSE_RTP / m;
+    const pctFromMin = Math.max(0, Math.min(1, newChance)) * 100;
+    // Can the *current* side express this chance?
+    // Under mode: target = pctFromMin, valid if >= DICE_MIN_TARGET.
+    // Over mode:  target = 99.99 + 0.01 - pctFromMin = 100 - pctFromMin,
+    //             valid if <= DICE_MAX_TARGET, i.e. pctFromMin >= 1.01.
+    // For multipliers over ~99× we can only get there in Under mode.
+    let useOver = over;
+    if (over && pctFromMin < DICE_MAX_TARGET + DICE_MIN_TARGET - DICE_MAX_TARGET) {
+      // pctFromMin < 1.01 → flip to under
+      useOver = false;
+    } else if (!over && pctFromMin < DICE_MIN_TARGET) {
+      // Under mode can't express pctFromMin < 0.01 either; fall back to max.
+      useOver = false; // keep under; clamp will handle it
+    }
+    if (useOver !== over) setOver(useOver);
+    const newTarget = useOver ? DICE_MAX_TARGET + DICE_MIN_TARGET - pctFromMin : pctFromMin;
     setTarget(round2(clampTarget(newTarget)));
     if (!busy) clearMarker();
   };
 
   // Commit an edited win-chance (in %): invert back to target.
+  // Flip the side automatically if the chance isn't expressible on the
+  // current side (same reason as commitMult above).
   const commitChance = () => {
     const pct = parseFloat(chanceStr);
     if (!Number.isFinite(pct) || pct <= 0 || pct >= 100) {
       setChanceStr((chance * 100).toFixed(2));
       return;
     }
-    const newTarget = over ? DICE_MAX_TARGET + DICE_MIN_TARGET - pct : pct;
+    let useOver = over;
+    if (over && pct < 1.01) useOver = false;
+    else if (!over && pct > 98.99) useOver = true;
+    if (useOver !== over) setOver(useOver);
+    const newTarget = useOver ? DICE_MAX_TARGET + DICE_MIN_TARGET - pct : pct;
     setTarget(round2(clampTarget(newTarget)));
     if (!busy) clearMarker();
   };

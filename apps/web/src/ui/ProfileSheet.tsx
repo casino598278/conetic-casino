@@ -34,12 +34,44 @@ export function ProfileSheet({ onClose }: Props) {
   const balance = useWalletStore((s) => s.balanceNano);
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [anonEnabled, setAnonEnabled] = useState(false);
+  const [anonName, setAnonName] = useState<string | null>(null);
+  const [anonBusy, setAnonBusy] = useState(false);
+  const [anonMsg, setAnonMsg] = useState<string | null>(null);
 
   useEffect(() => {
     api<ProfileStats>("/me/stats")
       .then(setStats)
       .catch(() => setErr("Couldn't load stats. Try again shortly."));
   }, []);
+
+  // Fetch current anon state from /me on open.
+  useEffect(() => {
+    api<{ anonMode?: boolean; anonName?: string | null }>("/me")
+      .then((me) => {
+        setAnonEnabled(!!me.anonMode);
+        setAnonName(me.anonName ?? null);
+      })
+      .catch(() => {});
+  }, []);
+
+  const toggleAnon = async () => {
+    if (anonBusy) return;
+    setAnonBusy(true);
+    setAnonMsg(null);
+    try {
+      const res = await api<{ anonMode: boolean; anonName: string | null }>("/me/anon", {
+        method: "POST",
+        body: JSON.stringify({ enabled: !anonEnabled }),
+      });
+      setAnonEnabled(res.anonMode);
+      setAnonName(res.anonName);
+    } catch {
+      setAnonMsg("Couldn't toggle anonymous mode");
+    } finally {
+      setAnonBusy(false);
+    }
+  };
 
   const displayName = user?.username ? `@${user.username}` : user?.firstName ?? "Player";
   const initial = (user?.firstName ?? user?.username ?? "?").slice(0, 1).toUpperCase();
@@ -128,6 +160,29 @@ export function ProfileSheet({ onClose }: Props) {
             )}
           </>
         )}
+
+        <div className="profile-section-title">Privacy</div>
+        <div className="profile-setting-row">
+          <div className="profile-setting-copy">
+            <div className="profile-setting-name">Anonymous mode</div>
+            <div className="profile-setting-sub">
+              {anonEnabled && anonName
+                ? `Shown as ${anonName} in games`
+                : "Hide your name in games"}
+            </div>
+          </div>
+          <button
+            type="button"
+            className={`profile-toggle ${anonEnabled ? "is-on" : ""}`}
+            onClick={toggleAnon}
+            disabled={anonBusy}
+            aria-pressed={anonEnabled}
+            aria-label="Anonymous mode"
+          >
+            <span className="profile-toggle-thumb" />
+          </button>
+        </div>
+        {anonMsg && <div className="profile-setting-msg">{anonMsg}</div>}
 
         <button className="bet-preset" style={{ width: "100%", marginTop: 14 }} onClick={onClose}>
           Close

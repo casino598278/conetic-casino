@@ -2229,6 +2229,63 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 .profile-game-net.is-win { color: var(--c-win); }
 .profile-game-net.is-loss { color: var(--c-loss); }
 
+.profile-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--rr-sm);
+}
+.profile-setting-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.profile-setting-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+.profile-setting-sub {
+  font-size: 11px;
+  color: var(--c-text-3);
+  line-height: 1.3;
+}
+.profile-setting-msg {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--c-loss);
+}
+
+/* iOS-style toggle */
+.profile-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: var(--rr-pill);
+  background: var(--c-surface-3);
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--t-sm);
+  padding: 0;
+}
+.profile-toggle:disabled { opacity: .6; cursor: not-allowed; }
+.profile-toggle.is-on { background: var(--c-accent); }
+.profile-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--c-text);
+  transition: transform var(--t-sm);
+}
+.profile-toggle.is-on .profile-toggle-thumb {
+  transform: translateX(18px);
+  background: var(--c-bg);
+}
+
 /* ============ Fairness drawer ============ */
 .fair-body { display: flex; flex-direction: column; gap: 10px; }
 .fair-row { display: flex; flex-direction: column; gap: 4px; }
