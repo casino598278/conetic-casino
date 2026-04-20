@@ -306,9 +306,12 @@ export function Keno({ onBack, onError, onOpenFairness }: Props) {
         </div>
 
         {lastMult != null && lastMult > 0 && lastPayoutNano && !rolling && (
-          <div className="keno-won">
-            +{fmtTon(BigInt(lastPayoutNano) - tonToNano(parseFloat(amount) || 0))}
-            <span className="keno-won-mult">&nbsp;· {lastMult.toFixed(2)}×</span>
+          <div className="keno-win-card" role="status">
+            <div className="keno-win-card-mult">{lastMult.toFixed(2)}×</div>
+            <div className="keno-win-card-divider" />
+            <div className="keno-win-card-amount">
+              +{fmtTon(BigInt(lastPayoutNano) - tonToNano(parseFloat(amount) || 0))}
+            </div>
           </div>
         )}
       </div>

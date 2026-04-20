@@ -2030,15 +2030,52 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 .keno-summary-val.is-win { color: var(--c-win); }
 .keno-summary-val.is-loss { color: var(--c-loss); }
 
-.keno-won {
-  font-size: 18px;
+/* Floating win card — centered over the grid after a winning round.
+   Matches Stake's Keno pop-up: solid surface, accent outline, multiplier
+   on top with a thin divider under it and the TON profit below. */
+.keno-win-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 160px;
+  padding: 18px 22px;
+  background: var(--c-surface);
+  border: 2px solid var(--c-win);
+  border-radius: var(--rr);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 3;
+  pointer-events: none;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 0 24px rgba(95, 216, 140, 0.2);
+  animation: keno-win-pop 280ms var(--ease);
+}
+@keyframes keno-win-pop {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(.8); }
+  60%  { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+.keno-win-card-mult {
+  font-size: 26px;
   font-weight: 700;
   color: var(--c-win);
   font-variant-numeric: tabular-nums;
-  padding-top: 4px;
-  animation: keno-pop 320ms var(--ease);
+  line-height: 1;
 }
-.keno-won-mult { color: var(--c-text-2); font-weight: 500; font-size: 13px; }
+.keno-win-card-divider {
+  width: 80%;
+  height: 1px;
+  background: var(--c-border-2);
+}
+.keno-win-card-amount {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--c-win);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
 
 .keno-paytable {
   display: grid;
