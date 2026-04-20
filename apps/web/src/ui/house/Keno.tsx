@@ -113,10 +113,9 @@ export function Keno({ onBack, onError, onOpenFairness }: Props) {
 
   const pickRandom = () => {
     if (busy || rolling) return;
-    // Stake "Auto Pick" feature — fills up to 10 random unique cells.
-    const target = picks.size === 0 ? 5 : picks.size;
+    // Fills 10 random unique cells (the max pick count).
     const next = new Set<number>();
-    while (next.size < target) {
+    while (next.size < KENO_MAX_PICKS) {
       next.add(Math.floor(Math.random() * KENO_GRID));
     }
     setPicks(next);
