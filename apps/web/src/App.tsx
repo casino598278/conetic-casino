@@ -288,11 +288,7 @@ export default function App() {
     if (activeGame === "swashbooze") {
       return (
         <Suspense fallback={<div className="stake-empty">Loading…</div>}>
-          <SwashBooze
-            onBack={closeGame}
-            onError={showToast}
-            onOpenFairness={() => setFairnessOpen(true)}
-          />
+          <SwashBooze onBack={closeGame} onError={showToast} />
         </Suspense>
       );
     }

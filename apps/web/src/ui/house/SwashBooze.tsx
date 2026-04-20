@@ -143,7 +143,7 @@ interface PlayResult {
 interface Props {
   onBack: () => void;
   onError?: (msg: string) => void;
-  onOpenFairness: () => void;
+  // Fairness is intentionally omitted on slots per product direction.
 }
 
 // ──────────────────────────── animation timings ────────────────────────────
@@ -165,7 +165,7 @@ function computeSettleMs(outcome: SwashOutcome): number {
 
 // ──────────────────────────── component ────────────────────────────
 
-export function SwashBooze({ onBack, onError, onOpenFairness }: Props) {
+export function SwashBooze({ onBack, onError }: Props) {
   const balance = useWalletStore((s) => s.balanceNano);
   const setBalance = useWalletStore((s) => s.setBalance);
 
@@ -369,12 +369,8 @@ export function SwashBooze({ onBack, onError, onOpenFairness }: Props) {
           Back
         </button>
         <div className="sg-title">Swash Booze</div>
-        <button className="sg-head-btn" onClick={onOpenFairness} type="button" aria-label="Fairness">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z" />
-          </svg>
-          Fairness
-        </button>
+        {/* Reserve the right slot so the title stays centered. */}
+        <div style={{ width: 60 }} />
       </div>
 
       <div className="sg-stage swash-stage">
