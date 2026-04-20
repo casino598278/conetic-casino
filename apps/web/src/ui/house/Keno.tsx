@@ -9,27 +9,8 @@ import {
 import { api, ApiError } from "../../net/api";
 import { haptic, notify } from "../../telegram/initWebApp";
 import { useWalletStore } from "../../state/walletStore";
+import { usePriceStore, usdToNano, nanoToUsd, fmtUsd } from "../../state/priceStore";
 import { AutoPanel, type AutoBetResult } from "./AutoPanel";
-
-const NANO = 1_000_000_000n;
-
-function fmtTon(nano: bigint): string {
-  const w = nano / NANO;
-  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
-  return f ? `${w}.${f}` : `${w}`;
-}
-function tonToNano(ton: number): bigint {
-  if (!Number.isFinite(ton) || ton <= 0) return 0n;
-  const s = ton.toFixed(9);
-  const [whole, frac = ""] = s.split(".");
-  return BigInt(whole!) * NANO + BigInt(frac.padEnd(9, "0").slice(0, 9));
-}
-function nanoToTonDisplay(nano: bigint): string {
-  if (nano <= 0n) return "0";
-  const w = nano / NANO;
-  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
-  return f ? `${w}.${f}` : `${w}`;
-}
 
 interface PlayResult {
   ok: true;
@@ -150,11 +131,15 @@ export function Keno({ onBack, onError, onOpenFairness }: Props) {
     }
   };
 
+  const usdPerTon = usePriceStore((s) => s.usdPerTon);
+
   const play = async () => {
     if (picks.size === 0) { onError?.("Pick at least one cell"); return; }
-    const ton = parseFloat(amount);
-    if (!Number.isFinite(ton) || ton <= 0) { onError?.("Enter a bet amount"); return; }
-    const nano = tonToNano(ton);
+    if (usdPerTon == null) { onError?.("Loading price…"); return; }
+    const usd = parseFloat(amount);
+    if (!Number.isFinite(usd) || usd <= 0) { onError?.("Enter a bet amount"); return; }
+    const nano = usdToNano(usd, usdPerTon);
+    if (nano <= 0n) { onError?.("Bet too small"); return; }
     if (nano > balance) { onError?.("Insufficient balance"); notify("error"); return; }
     if (busy || rolling) return;
     try {
@@ -212,16 +197,20 @@ export function Keno({ onBack, onError, onOpenFairness }: Props) {
   const paytable = kenoPaytable(risk, Math.max(1, picks.size));
   const picksArr = Array.from(picks);
 
-  const setAmountNano = (nano: bigint) => {
-    if (nano <= 0n) { setAmount("0"); return; }
-    setAmount(nanoToTonDisplay(nano));
+  const setAmountUsd = (usd: number) => {
+    if (!Number.isFinite(usd) || usd <= 0) { setAmount("0"); return; }
+    setAmount(usd.toFixed(2));
   };
-  const half = () => setAmountNano(tonToNano(parseFloat(amount) || 0) / 2n);
+  const half = () => setAmountUsd((parseFloat(amount) || 0) / 2);
   const double = () => {
-    const doubled = tonToNano(parseFloat(amount) || 0) * 2n;
-    setAmountNano(doubled > balance ? balance : doubled);
+    const doubled = (parseFloat(amount) || 0) * 2;
+    const balUsd = usdPerTon != null ? nanoToUsd(balance, usdPerTon) : doubled;
+    setAmountUsd(doubled > balUsd ? balUsd : doubled);
   };
-  const maxBet = () => setAmountNano(balance);
+  const maxBet = () => {
+    if (usdPerTon == null) return;
+    setAmountUsd(nanoToUsd(balance, usdPerTon));
+  };
 
   const betReady = !busy && !rolling && picks.size > 0 && (parseFloat(amount) || 0) > 0;
 
@@ -239,7 +228,7 @@ export function Keno({ onBack, onError, onOpenFairness }: Props) {
     return { picked, drawn, hit, isRevealed };
   };
 
-  const profitTon = lastMult != null && lastMult > 0
+  const profitUsd = lastMult != null && lastMult > 0
     ? (parseFloat(amount) || 0) * (lastMult - 1)
     : 0;
 
@@ -310,7 +299,9 @@ export function Keno({ onBack, onError, onOpenFairness }: Props) {
             <div className="keno-win-card-mult">{lastMult.toFixed(2)}×</div>
             <div className="keno-win-card-divider" />
             <div className="keno-win-card-amount">
-              +{fmtTon(BigInt(lastPayoutNano) - tonToNano(parseFloat(amount) || 0))}
+              {usdPerTon != null
+                ? `+${fmtUsd(nanoToUsd(BigInt(lastPayoutNano) - usdToNano(parseFloat(amount) || 0, usdPerTon), usdPerTon))}`
+                : "Win"}
             </div>
           </div>
         )}
@@ -409,7 +400,7 @@ export function Keno({ onBack, onError, onOpenFairness }: Props) {
               <div className="sg-field-head">
                 <span>Bet amount</span>
                 <span className="sg-field-head-val">
-                  Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(2).replace(/\.?0+$/, "") : "0"}
+                  Profit&nbsp;{profitUsd > 0 ? fmtUsd(profitUsd) : "$0.00"}
                 </span>
               </div>
               <div className="sg-input-row">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../net/api";
 import { useWalletStore } from "../state/walletStore";
+import { usePriceStore, fmtNanoUsd } from "../state/priceStore";
 
 interface ProfileStats {
   totalPlays: number;
@@ -14,15 +15,8 @@ interface ProfileStats {
   perGame: { game: string; plays: number; wagerNano: string; netNano: string }[];
 }
 
-const NANO = 1_000_000_000n;
-function fmtTon(s: string): string {
-  const n = BigInt(s);
-  const neg = n < 0n;
-  const abs = neg ? -n : n;
-  const w = abs / NANO;
-  const f = (abs % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
-  const body = f ? `${w}.${f}` : `${w}`;
-  return neg ? `−${body}` : body;
+function fmtTon(s: string, usdPerTon: number | null): string {
+  return fmtNanoUsd(BigInt(s), usdPerTon);
 }
 
 interface Props {
@@ -32,6 +26,7 @@ interface Props {
 export function ProfileSheet({ onClose }: Props) {
   const user = useWalletStore((s) => s.user);
   const balance = useWalletStore((s) => s.balanceNano);
+  const usdPerTon = usePriceStore((s) => s.usdPerTon);
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [anonEnabled, setAnonEnabled] = useState(false);
@@ -103,7 +98,7 @@ export function ProfileSheet({ onClose }: Props) {
           </div>
           <div className="profile-identity">
             <div className="profile-name">{displayName}</div>
-            <div className="profile-balance">{fmtTon(balance.toString())} TON</div>
+            <div className="profile-balance">{fmtTon(balance.toString(), usdPerTon)}</div>
           </div>
         </div>
 
@@ -115,10 +110,10 @@ export function ProfileSheet({ onClose }: Props) {
           <>
             <div className="profile-kpis">
               <Kpi label="Total bets" value={String(stats.totalPlays)} />
-              <Kpi label="Wagered" value={`${fmtTon(stats.totalWagerNano)} TON`} />
+              <Kpi label="Wagered" value={fmtTon(stats.totalWagerNano, usdPerTon)} />
               <Kpi
                 label="Net"
-                value={`${fmtTon(stats.netNano)} TON`}
+                value={fmtTon(stats.netNano, usdPerTon)}
                 tone={netPositive ? "win" : "loss"}
               />
               <Kpi
@@ -127,7 +122,7 @@ export function ProfileSheet({ onClose }: Props) {
               />
               <Kpi
                 label="Biggest win"
-                value={`${fmtTon(stats.biggestWinNano)} TON`}
+                value={fmtTon(stats.biggestWinNano, usdPerTon)}
                 tone={BigInt(stats.biggestWinNano) > 0n ? "win" : undefined}
               />
               <Kpi
@@ -150,7 +145,7 @@ export function ProfileSheet({ onClose }: Props) {
                         <span
                           className={`profile-game-net ${positive ? "is-win" : "is-loss"}`}
                         >
-                          {fmtTon(g.netNano)} TON
+                          {fmtTon(g.netNano, usdPerTon)}
                         </span>
                       </div>
                     );

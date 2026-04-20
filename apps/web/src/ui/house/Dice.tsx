@@ -9,26 +9,8 @@ import {
 import { api, ApiError } from "../../net/api";
 import { haptic, notify } from "../../telegram/initWebApp";
 import { useWalletStore } from "../../state/walletStore";
+import { usePriceStore, usdToNano, nanoToUsd, fmtUsd } from "../../state/priceStore";
 import { AutoPanel, type AutoBetResult } from "./AutoPanel";
-
-const NANO = 1_000_000_000n;
-
-function fmtTon(nano: bigint): string {
-  const w = nano / NANO;
-  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
-  return f ? `${w}.${f}` : `${w}`;
-}
-function tonToNano(ton: number): bigint {
-  if (!Number.isFinite(ton) || ton <= 0) return 0n;
-  const s = ton.toFixed(9);
-  const [whole, frac = ""] = s.split(".");
-  return BigInt(whole!) * NANO + BigInt(frac.padEnd(9, "0").slice(0, 9));
-}
-function nanoToTonDisplay(nano: bigint): string {
-  const w = nano / NANO;
-  const f = (nano % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
-  return f ? `${w}.${f}` : `${w}`;
-}
 
 interface PlayResult {
   ok: true;
@@ -83,7 +65,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
 
   const chance = diceWinChance({ target, over });
   const mult = diceMultiplier({ target, over });
-  const profitTon = (parseFloat(amount) || 0) * (mult - 1);
+  const profitUsd = (parseFloat(amount) || 0) * (mult - 1);
 
   // Keep the buffers in sync whenever `target`/`over` change via the slider.
   useEffect(() => {
@@ -126,10 +108,14 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
     }
   };
 
+  const usdPerTon = usePriceStore((s) => s.usdPerTon);
+
   const play = async () => {
-    const ton = parseFloat(amount);
-    if (!Number.isFinite(ton) || ton <= 0) { onError?.("Enter a bet amount"); return; }
-    const nano = tonToNano(ton);
+    if (usdPerTon == null) { onError?.("Loading price…"); return; }
+    const usd = parseFloat(amount);
+    if (!Number.isFinite(usd) || usd <= 0) { onError?.("Enter a bet amount"); return; }
+    const nano = usdToNano(usd, usdPerTon);
+    if (nano <= 0n) { onError?.("Bet too small"); return; }
     if (nano > balance) { onError?.("Insufficient balance"); notify("error"); return; }
     if (busy) return;
     try {
@@ -266,16 +252,21 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
     if (!busy) clearMarker();
   };
 
-  const setAmountNano = (nano: bigint) => {
-    if (nano <= 0n) { setAmount("0"); return; }
-    setAmount(nanoToTonDisplay(nano));
+  // Amount state is USD. Helpers operate in USD using the current rate.
+  const setAmountUsd = (usd: number) => {
+    if (!Number.isFinite(usd) || usd <= 0) { setAmount("0"); return; }
+    setAmount(usd.toFixed(2));
   };
-  const half = () => setAmountNano(tonToNano(parseFloat(amount) || 0) / 2n);
+  const half = () => setAmountUsd((parseFloat(amount) || 0) / 2);
   const double = () => {
-    const doubled = tonToNano(parseFloat(amount) || 0) * 2n;
-    setAmountNano(doubled > balance ? balance : doubled);
+    const doubled = (parseFloat(amount) || 0) * 2;
+    const balUsd = usdPerTon != null ? nanoToUsd(balance, usdPerTon) : doubled;
+    setAmountUsd(doubled > balUsd ? balUsd : doubled);
   };
-  const maxBet = () => setAmountNano(balance);
+  const maxBet = () => {
+    if (usdPerTon == null) return;
+    setAmountUsd(nanoToUsd(balance, usdPerTon));
+  };
 
   const targetPct = ((target - DICE_MIN_TARGET) / (DICE_MAX_TARGET - DICE_MIN_TARGET)) * 100;
   const fillStyle = over
@@ -307,8 +298,13 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
           {roll == null ? "0.00" : roll.toFixed(2)}
         </div>
         <div className={`dice-stage-sub ${win === true ? "is-win" : win === false ? "is-loss" : ""}`}>
-          {win === true && lastPayout
-            ? `+${fmtTon(BigInt(lastPayout) - tonToNano(parseFloat(amount) || 0))}`
+          {win === true && lastPayout && usdPerTon != null
+            ? `+${fmtUsd(
+                nanoToUsd(
+                  BigInt(lastPayout) - usdToNano(parseFloat(amount) || 0, usdPerTon),
+                  usdPerTon,
+                ),
+              )}`
             : win === false
               ? "Loss"
               : "Place a bet"}
@@ -426,7 +422,7 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
               <div className="sg-field-head">
                 <span>Bet amount</span>
                 <span className="sg-field-head-val">
-                  Profit&nbsp;{profitTon > 0 ? profitTon.toFixed(2).replace(/\.?0+$/, "") : "0"}
+                  Profit&nbsp;{profitUsd > 0 ? fmtUsd(profitUsd) : "$0.00"}
                 </span>
               </div>
               <div className="sg-input-row">

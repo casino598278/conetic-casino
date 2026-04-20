@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../net/api";
+import { usePriceStore, fmtNanoUsd } from "../state/priceStore";
 
 interface UnifiedBet {
   source: "arena" | "mining" | "house";
@@ -16,14 +17,6 @@ interface UnifiedBet {
   createdAt: number;
 }
 
-const NANO = 1_000_000_000n;
-function fmtTon(s: string | null | undefined): string {
-  if (!s) return "0";
-  const n = BigInt(s);
-  const w = n / NANO;
-  const f = (n % NANO).toString().padStart(9, "0").slice(0, 2).replace(/0+$/, "");
-  return f ? `${w}.${f}` : `${w}`;
-}
 function fmtTime(ms: number): string {
   const d = new Date(ms);
   return `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")} · ${d
@@ -93,6 +86,7 @@ export function HistoryModal({ onClose }: Props) {
 }
 
 function BetCard({ bet: b }: { bet: UnifiedBet }) {
+  const usdPerTon = usePriceStore((s) => s.usdPerTon);
   const betN = BigInt(b.betNano);
   const payoutN = BigInt(b.payoutNano);
   const won = payoutN > betN;
@@ -118,11 +112,11 @@ function BetCard({ bet: b }: { bet: UnifiedBet }) {
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="history-name">{displayName}</div>
-          <div className="history-time">Bet {fmtTon(b.betNano)} TON</div>
+          <div className="history-time">Bet {fmtNanoUsd(betN, usdPerTon)}</div>
         </div>
         <div style={{ textAlign: "right" }}>
           <div className={`history-amount ${won ? "is-win" : "is-loss"}`}>
-            {won ? `+${fmtTon(profit.toString())}` : `−${fmtTon(betN.toString())}`} TON
+            {won ? `+${fmtNanoUsd(profit, usdPerTon)}` : `−${fmtNanoUsd(betN, usdPerTon)}`}
           </div>
         </div>
       </div>
