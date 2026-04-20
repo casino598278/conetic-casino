@@ -35,6 +35,9 @@ const Limbo = lazy(() =>
 const Keno = lazy(() =>
   import("./ui/house/Keno").then((m) => ({ default: m.Keno })),
 );
+const SwashBooze = lazy(() =>
+  import("./ui/house/SwashBooze").then((m) => ({ default: m.SwashBooze })),
+);
 
 const NANO = 1_000_000_000n;
 function fmtTon(nanoStr: string): string {
@@ -274,6 +277,18 @@ export default function App() {
       return (
         <Suspense fallback={<div className="stake-empty">Loading…</div>}>
           <Keno
+            onBack={closeGame}
+            onError={showToast}
+            onOpenFairness={() => setFairnessOpen(true)}
+          />
+        </Suspense>
+      );
+    }
+
+    if (activeGame === "swashbooze") {
+      return (
+        <Suspense fallback={<div className="stake-empty">Loading…</div>}>
+          <SwashBooze
             onBack={closeGame}
             onError={showToast}
             onOpenFairness={() => setFairnessOpen(true)}
