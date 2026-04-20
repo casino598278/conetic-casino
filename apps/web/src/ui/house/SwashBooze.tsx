@@ -51,7 +51,10 @@ const STAGGER_MS = 28;           // per-column drop stagger
 const DROP_DUR_MS = 220;         // full drop per column
 const WIN_FLASH_MS = 320;        // winning-cluster pulse+burst dwell
 const TUMBLE_GAP_MS = 90;        // post-burst pause before next drop
-const STEP_DUR = STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS + WIN_FLASH_MS + TUMBLE_GAP_MS;
+// A no-win drop can advance quickly — no flash to dwell on.
+const STEP_DUR_WIN = STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS + WIN_FLASH_MS + TUMBLE_GAP_MS;
+const STEP_DUR_NOWIN = STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS + 40;
+const stepDuration = (step: SwashSpinStep) => (step.winningCells.length > 0 ? STEP_DUR_WIN : STEP_DUR_NOWIN);
 
 const FS_INTRO_MS = 1100;
 const FS_BETWEEN_MS = 220;
@@ -60,6 +63,7 @@ const BIG_WIN_MS = 1800;
 const COUNTUP_DUR_MS = 900;
 const SPIN_WIN_FLASH_MS = 900;      // per-spin "+$X.XX" popup dwell + count-up
 const RETRIGGER_FLASH_MS = 1200;    // "+5 FREE SPINS" banner dwell
+const NICE_FLASH_MS = 1100;         // "NICE!" mid-tier celebration dwell
 
 // ────────────────────────── component ──────────────────────────
 
@@ -81,7 +85,8 @@ export function SwashBooze({ onBack, onError }: Props) {
   const [scatterCount, setScatterCount] = useState(0);
   const [phase, setPhase] = useState<"idle" | "base" | "fs" | "big-win">("idle");
   const [fsMeta, setFsMeta] = useState<null | { spinsTotal: number; spinIdx: number; fsMult: number }>(null);
-  const [bigWin, setBigWin] = useState<null | { tier: "big" | "super" | "mega"; multiplier: number }>(null);
+  const [bigWin, setBigWin] = useState<null | { tier: WinTier; multiplier: number }>(null);
+  const [niceFlash, setNiceFlash] = useState<null | { usd: number }>(null);
   const [showFsIntro, setShowFsIntro] = useState(false);
   const [showFsOutro, setShowFsOutro] = useState<null | { totalMult: number }>(null);
   const [winCounterUsd, setWinCounterUsd] = useState<number | null>(null);
@@ -89,6 +94,10 @@ export function SwashBooze({ onBack, onError }: Props) {
   const [spinWinFlash, setSpinWinFlash] = useState<null | { usd: number; kind: "tumble" | "spin" }>(null);
   // Retrigger "+5 SPINS" banner flash.
   const [retriggerFlash, setRetriggerFlash] = useState(false);
+  // Tumble-win pill: purple banner above grid showing running tumble total.
+  const [tumblePill, setTumblePill] = useState<null | { usd: number; multiplier?: number }>(null);
+  // Last-step cluster breakdown for "9× 🍌 PAYS $0.75" sub-readout.
+  const [lastCluster, setLastCluster] = useState<null | { symbol: SwashSymbol; count: number; payUsd: number }>(null);
   const countRafRef = useRef<number | null>(null);
   const [showBuyModal, setShowBuyModal] = useState(false);
 
@@ -188,6 +197,9 @@ export function SwashBooze({ onBack, onError }: Props) {
     setShowFsOutro(null);
     setSpinWinFlash(null);
     setRetriggerFlash(false);
+    setNiceFlash(null);
+    setTumblePill(null);
+    setLastCluster(null);
 
     // USD stake this round. For FS popups we use the BASE bet (before buy
     // multiplier) so "$2.50 win" means "won 2.5× my bet this spin".
@@ -196,11 +208,25 @@ export function SwashBooze({ onBack, onError }: Props) {
 
     let t = 0;
 
-    // Base game — one step per tumble
+    // Base game — one step per tumble. We also drive the "TUMBLE WIN" pill
+    // that accumulates total USD won across the base cascade chain.
+    let baseChainUsd = 0;
     for (const step of r.outcome.baseSteps) {
       const at = t;
+      const stepPayUsd = step.stepMultiplier * baseBetUsd;
       timers.current.push(window.setTimeout(() => renderStep(step), at));
-      t += STEP_DUR;
+      if (stepPayUsd > 0) {
+        baseChainUsd += stepPayUsd;
+        const pillUsd = baseChainUsd;
+        timers.current.push(window.setTimeout(() => {
+          setTumblePill({ usd: pillUsd });
+        }, at + Math.max(0, DROP_DUR_MS - 40)));
+      }
+      t += stepDuration(step);
+    }
+    // Hide pill at end of base chain.
+    if (baseChainUsd > 0) {
+      timers.current.push(window.setTimeout(() => setTumblePill(null), t));
     }
 
     // Base-round win popup (only if base actually paid and there's no FS to steal thunder).
@@ -214,6 +240,18 @@ export function SwashBooze({ onBack, onError }: Props) {
       }, popAt));
       timers.current.push(window.setTimeout(() => setSpinWinFlash(null), popAt + SPIN_WIN_FLASH_MS));
       t += SPIN_WIN_FLASH_MS;
+
+      // NICE! celebration — mid-tier feel-good (5×–<10× bet, no big-win coming).
+      const willCelebrate = r.multiplier >= 10; // BIG or higher handles its own banner
+      if (!willCelebrate && baseUsdWon >= 5 * baseBetUsd) {
+        const niceAt = t;
+        timers.current.push(window.setTimeout(() => {
+          setNiceFlash({ usd: baseUsdWon });
+          haptic("medium");
+        }, niceAt));
+        timers.current.push(window.setTimeout(() => setNiceFlash(null), niceAt + NICE_FLASH_MS));
+        t += NICE_FLASH_MS;
+      }
     }
 
     // Free spins
@@ -232,11 +270,24 @@ export function SwashBooze({ onBack, onError }: Props) {
       let runningMult = 0;
       for (let si = 0; si < r.outcome.freeSpins.spins.length; si++) {
         const fsSpin = r.outcome.freeSpins.spins[si]!;
+        // Tumble-win pill accumulates THIS spin's cluster USD as cascades run.
+        let spinChainUsd = 0;
+        const bombMult = Math.max(1, fsSpin.spinMultTotal);
         for (const step of fsSpin.steps) {
           const at = t;
+          const stepPayUsd = step.stepMultiplier * baseBetUsd;
           timers.current.push(window.setTimeout(() => renderStep(step), at));
-          t += STEP_DUR;
+          if (stepPayUsd > 0) {
+            spinChainUsd += stepPayUsd;
+            const pillUsd = spinChainUsd;
+            timers.current.push(window.setTimeout(() => {
+              setTumblePill({ usd: pillUsd, multiplier: bombMult > 1 ? bombMult : undefined });
+            }, at + Math.max(0, DROP_DUR_MS - 40)));
+          }
+          t += stepDuration(step);
         }
+        // Hide pill between spins.
+        timers.current.push(window.setTimeout(() => setTumblePill(null), t));
         // End of this spin: pop a per-spin win flash + count the FS total up
         // from its prior value to its new value.
         const spinWinUsd = fsSpin.spinWin * baseBetUsd;
@@ -343,6 +394,15 @@ export function SwashBooze({ onBack, onError }: Props) {
     setWinCells(ws);
     setStepCounter((n) => n + 1); // bump so the cell keys change → React remounts → keyframe re-runs
     if (step.winningCells.length > 0) haptic("light");
+    // Track biggest cluster for the "9× 🍌 PAYS $0.75" sub-readout.
+    if (step.winSymbol && step.winCount > 0) {
+      const baseBetUsd = parseFloat(bet) || 0;
+      setLastCluster({
+        symbol: step.winSymbol,
+        count: step.winCount,
+        payUsd: step.stepMultiplier * baseBetUsd,
+      });
+    }
   };
 
   const animateCountUp = (targetUsd: number) => {
@@ -403,6 +463,21 @@ export function SwashBooze({ onBack, onError }: Props) {
         <div className="swash-cloud swash-cloud-2" aria-hidden />
         <div className="swash-cloud swash-cloud-3" aria-hidden />
 
+        {/* Marketing marquee — shows on idle only (not while spinning, not in FS, not during big-win) */}
+        {!rolling && phase === "idle" && !bigWin && !niceFlash && !showFsIntro && !showFsOutro && (
+          <div className="swash-marquee">WIN OVER 21,100× BET</div>
+        )}
+
+        {/* "Symbols pay anywhere" top banner — always visible outside FS/big-win/modals */}
+        {phase !== "fs" && !bigWin && !niceFlash && !showFsIntro && !showFsOutro && (
+          <div className="swash-top-banner">★ SYMBOLS PAY ANYWHERE ON THE SCREEN ★</div>
+        )}
+
+        {/* "GOOD LUCK!" pulse while an active spin is rolling before any win resolves */}
+        {rolling && phase === "idle" && !bigWin && !niceFlash && !showFsIntro && !showFsOutro && !tumblePill && winCounterUsd == null && !spinWinFlash && (
+          <div className="swash-good-luck">GOOD LUCK!</div>
+        )}
+
         {/* Grid area — full width on mobile, centered */}
         <div className="swash-grid-frame">
           <div className="swash-grid">
@@ -436,44 +511,78 @@ export function SwashBooze({ onBack, onError }: Props) {
             </div>
           )}
 
-          {/* FS header pill */}
-          {phase === "fs" && fsMeta && !showFsIntro && (
-            <div className="swash-fs-bar">
-              <span>FREE SPINS <strong>{fsMeta.spinsTotal - fsMeta.spinIdx}</strong></span>
-              <span>WIN <strong>{fmtUsd(fsMeta.fsMult * betUsd)}</strong></span>
-            </div>
-          )}
-
-          {/* FS intro */}
+          {/* FS intro — dark purple polka-dot panel with splat-framed number */}
           {showFsIntro && (
             <div className="swash-fs-intro">
-              <div className="swash-fs-intro-top">FREE SPINS</div>
-              <div className="swash-fs-intro-big">{SWASH_FREE_SPINS}</div>
-              <div className="swash-fs-intro-bottom">BONUS TRIGGERED</div>
+              <div className="swash-fs-intro-top">CONGRATULATIONS</div>
+              <div className="swash-fs-intro-sub">YOU HAVE WON</div>
+              <div className="swash-fs-intro-splat">
+                <div className="swash-fs-intro-big">{SWASH_FREE_SPINS}</div>
+              </div>
+              <div className="swash-fs-intro-bottom">FREE SPINS</div>
+              <div className="swash-fs-intro-hint">PRESS ANYWHERE TO CONTINUE</div>
             </div>
           )}
 
-          {/* FS outro */}
+          {/* FS outro — same dark panel, shows total feature win */}
           {showFsOutro && (
-            <div className="swash-fs-outro">
-              <div className="swash-fs-outro-label">FEATURE WIN</div>
-              <div className="swash-fs-outro-amount">{fmtUsd(showFsOutro.totalMult * betUsd)}</div>
+            <div className="swash-fs-intro">
+              <div className="swash-fs-intro-top">CONGRATULATIONS</div>
+              <div className="swash-fs-intro-sub">YOU HAVE WON</div>
+              <div className="swash-fs-intro-splat">
+                <div className="swash-fs-intro-big">{fmtUsd(showFsOutro.totalMult * betUsd)}</div>
+              </div>
+              <div className="swash-fs-intro-bottom">IN {SWASH_FREE_SPINS} FREE SPINS</div>
+              <div className="swash-fs-intro-hint">PRESS ANYWHERE TO CONTINUE</div>
             </div>
           )}
 
           {/* Big Win */}
           {bigWin && (
             <div className={`swash-big-win is-${bigWin.tier}`}>
-              <div className="swash-big-win-label">
-                {bigWin.tier === "mega" ? "MEGA WIN" : bigWin.tier === "super" ? "SUPER WIN" : "BIG WIN"}
-              </div>
+              <div className="swash-big-win-label">{WIN_TIER_LABEL[bigWin.tier]}</div>
               <div className="swash-big-win-amount">{fmtUsd(bigWin.multiplier * betUsd)}</div>
+              {bigWin.tier === "legendary" && <div className="swash-legendary-confetti" aria-hidden />}
+            </div>
+          )}
+
+          {/* NICE! mid-win celebration — smaller than BIG WIN, more frequent */}
+          {niceFlash && !bigWin && (
+            <div className="swash-nice-banner">
+              <div className="swash-nice-banner-text">NICE!</div>
+              <div className="swash-nice-banner-amount">{fmtUsd(niceFlash.usd)}</div>
             </div>
           )}
 
           {/* Settle win counter */}
           {winCounterUsd != null && phase === "idle" && !bigWin && (
-            <div className="swash-win-counter">{fmtUsd(winCounterUsd)}</div>
+            <div className="swash-win-counter">
+              <div className="swash-win-counter-main">WIN {fmtUsd(winCounterUsd)}</div>
+              {lastCluster && (
+                <div className="swash-win-breakdown">
+                  {lastCluster.count}× <span className="swash-win-breakdown-sym"><SwashSymbolIcon symbol={lastCluster.symbol} /></span> PAYS {fmtUsd(lastCluster.payUsd)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* FREE SPINS LEFT N sub-readout during FS */}
+          {phase === "fs" && fsMeta && !showFsIntro && !showFsOutro && (
+            <div className="swash-fs-remaining">
+              <div className="swash-fs-remaining-win">WIN {fmtUsd(fsMeta.fsMult * betUsd)}</div>
+              <div className="swash-fs-remaining-count">FREE SPINS LEFT {Math.max(0, fsMeta.spinsTotal - fsMeta.spinIdx)}</div>
+            </div>
+          )}
+
+          {/* Tumble-win pill above the grid */}
+          {tumblePill && (
+            <div className="swash-tumble-pill">
+              <div className="swash-tumble-pill-label">TUMBLE WIN</div>
+              <div className="swash-tumble-pill-amount">
+                {fmtUsd(tumblePill.usd)}
+                {tumblePill.multiplier ? <span className="swash-tumble-pill-mult"> × {tumblePill.multiplier}</span> : null}
+              </div>
+            </div>
           )}
 
           {/* Per-spin/per-tumble win popup — floats over the grid and fades. */}
@@ -508,20 +617,29 @@ export function SwashBooze({ onBack, onError }: Props) {
             <span className="swash-feature-buy-price">{fmtUsd(buyCostUsd)}</span>
           </button>
 
-          <button
-            type="button"
-            className={`swash-feature-ante ${ante ? "is-on" : ""}`}
-            onClick={() => setAnte((a) => !a)}
-            disabled={busy || rolling}
-          >
-            <div className="swash-feature-ante-copy">
-              <span className="swash-feature-ante-label">DOUBLE CHANCE</span>
-              <span className="swash-feature-ante-sub">2× scatter rate</span>
+          {/* Merged bet card: BET amount + Double Chance toggle in one green candy card */}
+          <div className={`swash-bet-card ${ante ? "is-ante-on" : ""}`}>
+            <div className="swash-bet-card-amount">
+              <span className="swash-bet-card-label">BET</span>
+              <span className="swash-bet-card-value">{fmtUsd(effectiveBetUsd)}</span>
             </div>
-            <div className={`swash-feature-ante-toggle ${ante ? "is-on" : ""}`}>
-              <span className="swash-feature-ante-thumb" />
-            </div>
-          </button>
+            <button
+              type="button"
+              className="swash-bet-card-ante"
+              onClick={() => setAnte((a) => !a)}
+              disabled={busy || rolling}
+              aria-pressed={ante}
+            >
+              <div className="swash-bet-card-ante-copy">
+                <span className="swash-bet-card-ante-title">DOUBLE CHANCE</span>
+                <span className="swash-bet-card-ante-sub">TO WIN FEATURE</span>
+              </div>
+              <div className={`swash-bet-card-ante-toggle ${ante ? "is-on" : ""}`}>
+                <span className="swash-bet-card-ante-thumb" />
+                <span className="swash-bet-card-ante-state">{ante ? "ON" : "OFF"}</span>
+              </div>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -531,10 +649,6 @@ export function SwashBooze({ onBack, onError }: Props) {
           <div className="swash-hud-row">
             <span className="swash-hud-lbl">CREDIT</span>
             <span className="swash-hud-val">{fmtUsd(balUsd)}</span>
-          </div>
-          <div className="swash-hud-row">
-            <span className="swash-hud-lbl">BET</span>
-            <span className="swash-hud-val">{fmtUsd(effectiveBetUsd)}</span>
           </div>
         </div>
 
@@ -583,30 +697,29 @@ export function SwashBooze({ onBack, onError }: Props) {
       {showBuyModal && createPortal(
         <div className="swash-buy-modal-bg" onClick={() => setShowBuyModal(false)}>
           <div className="swash-buy-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="swash-buy-modal-title">Buy Bonus Round?</div>
-            <div className="swash-buy-modal-body">
-              Get {SWASH_FREE_SPINS} free spins immediately. Multiplier bombs
-              only land during free spins.
+            <div className="swash-buy-modal-title">ARE YOU SURE YOU WANT TO PURCHASE</div>
+            <div className="swash-buy-modal-deal">
+              <span className="swash-buy-modal-deal-num">{SWASH_FREE_SPINS}</span>
+              <span className="swash-buy-modal-deal-txt">FREE SPINS</span>
             </div>
-            <div className="swash-buy-modal-cost">
-              <span className="swash-buy-modal-cost-label">Cost</span>
-              <span className="swash-buy-modal-cost-value">{fmtUsd(buyCostUsd)}</span>
+            <div className="swash-buy-modal-cost-line">
+              AT THE COST OF <span className="swash-buy-modal-cost-price">{fmtUsd(buyCostUsd)}</span>?
             </div>
             <div className="swash-buy-modal-actions">
-              <button
-                type="button"
-                className="swash-buy-modal-cancel"
-                onClick={() => setShowBuyModal(false)}
-              >
-                Cancel
-              </button>
               <button
                 type="button"
                 className="swash-buy-modal-confirm"
                 onClick={onConfirmBuy}
                 disabled={buyCostUsd > balUsd}
               >
-                {buyCostUsd > balUsd ? "Low balance" : "Confirm"}
+                {buyCostUsd > balUsd ? "LOW BAL" : "YES"}
+              </button>
+              <button
+                type="button"
+                className="swash-buy-modal-cancel"
+                onClick={() => setShowBuyModal(false)}
+              >
+                NO
               </button>
             </div>
           </div>
@@ -617,9 +730,21 @@ export function SwashBooze({ onBack, onError }: Props) {
   );
 }
 
-function bigWinTier(multiplier: number): "big" | "super" | "mega" | null {
-  if (multiplier >= 50) return "mega";
-  if (multiplier >= 25) return "super";
+type WinTier = "big" | "mega" | "epic" | "sensational" | "legendary";
+
+function bigWinTier(multiplier: number): WinTier | null {
+  if (multiplier >= 500) return "legendary";
+  if (multiplier >= 100) return "sensational";
+  if (multiplier >= 50) return "epic";
+  if (multiplier >= 25) return "mega";
   if (multiplier >= 10) return "big";
   return null;
 }
+
+const WIN_TIER_LABEL: Record<WinTier, string> = {
+  big: "BIG WIN",
+  mega: "MEGA WIN",
+  epic: "EPIC WIN",
+  sensational: "SENSATIONAL WIN",
+  legendary: "LEGENDARY WIN",
+};
