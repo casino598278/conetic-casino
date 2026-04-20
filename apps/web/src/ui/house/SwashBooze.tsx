@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   SWASH_GRID_H,
   SWASH_GRID_W,
@@ -6,6 +7,8 @@ import {
   SWASH_BONUS_BUY_COST,
   SWASH_ANTE_MULTIPLIER,
   SWASH_SCATTERS_TO_TRIGGER,
+  SWASH_FS_RETRIGGER_SCATTERS,
+  SWASH_FS_RETRIGGER_AWARD,
   type SwashSymbol,
   type SwashSpinStep,
   type SwashOutcome,
@@ -55,6 +58,8 @@ const FS_BETWEEN_MS = 220;
 const FS_OUTRO_MS = 1300;
 const BIG_WIN_MS = 1800;
 const COUNTUP_DUR_MS = 900;
+const SPIN_WIN_FLASH_MS = 900;      // per-spin "+$X.XX" popup dwell + count-up
+const RETRIGGER_FLASH_MS = 1200;    // "+5 FREE SPINS" banner dwell
 
 // ────────────────────────── component ──────────────────────────
 
@@ -80,6 +85,10 @@ export function SwashBooze({ onBack, onError }: Props) {
   const [showFsIntro, setShowFsIntro] = useState(false);
   const [showFsOutro, setShowFsOutro] = useState<null | { totalMult: number }>(null);
   const [winCounterUsd, setWinCounterUsd] = useState<number | null>(null);
+  // Floating per-spin/per-tumble win amount popup over the grid.
+  const [spinWinFlash, setSpinWinFlash] = useState<null | { usd: number; kind: "tumble" | "spin" }>(null);
+  // Retrigger "+5 SPINS" banner flash.
+  const [retriggerFlash, setRetriggerFlash] = useState(false);
   const countRafRef = useRef<number | null>(null);
   const [showBuyModal, setShowBuyModal] = useState(false);
 
@@ -177,6 +186,13 @@ export function SwashBooze({ onBack, onError }: Props) {
     setBigWin(null);
     setShowFsIntro(false);
     setShowFsOutro(null);
+    setSpinWinFlash(null);
+    setRetriggerFlash(false);
+
+    // USD stake this round. For FS popups we use the BASE bet (before buy
+    // multiplier) so "$2.50 win" means "won 2.5× my bet this spin".
+    const baseBetUsd = parseFloat(bet) || 0;
+    void baseBetUsd; // used by FS loop below — keep lint happy
 
     let t = 0;
 
@@ -187,13 +203,27 @@ export function SwashBooze({ onBack, onError }: Props) {
       t += STEP_DUR;
     }
 
+    // Base-round win popup (only if base actually paid and there's no FS to steal thunder).
+    const baseUsdWon =
+      (r.outcome.baseClusterMult + r.outcome.baseScatterMult) * baseBetUsd;
+    if (baseUsdWon > 0 && !r.outcome.freeSpins.triggered) {
+      const popAt = t;
+      timers.current.push(window.setTimeout(() => {
+        setSpinWinFlash({ usd: baseUsdWon, kind: "tumble" });
+        haptic("light");
+      }, popAt));
+      timers.current.push(window.setTimeout(() => setSpinWinFlash(null), popAt + SPIN_WIN_FLASH_MS));
+      t += SPIN_WIN_FLASH_MS;
+    }
+
     // Free spins
     if (r.outcome.freeSpins.triggered) {
       const fsIntroAt = t;
       timers.current.push(window.setTimeout(() => {
         setPhase("fs");
         setShowFsIntro(true);
-        setFsMeta({ spinsTotal: r.outcome.freeSpins.spins.length, spinIdx: 0, fsMult: 0 });
+        // Start the counter at the INITIAL award — retriggers reveal live.
+        setFsMeta({ spinsTotal: SWASH_FREE_SPINS, spinIdx: 0, fsMult: 0 });
         haptic("medium");
       }, fsIntroAt));
       timers.current.push(window.setTimeout(() => setShowFsIntro(false), fsIntroAt + FS_INTRO_MS - 200));
@@ -207,12 +237,56 @@ export function SwashBooze({ onBack, onError }: Props) {
           timers.current.push(window.setTimeout(() => renderStep(step), at));
           t += STEP_DUR;
         }
-        // Advance the spin counter at the end of this spin
+        // End of this spin: pop a per-spin win flash + count the FS total up
+        // from its prior value to its new value.
+        const spinWinUsd = fsSpin.spinWin * baseBetUsd;
+        const prevRunning = runningMult;
         runningMult += fsSpin.spinWin;
         const idx = si + 1;
-        const mult = runningMult;
+        const isRetrigger = fsSpin.initialScatters >= SWASH_FS_RETRIGGER_SCATTERS;
+
+        if (spinWinUsd > 0) {
+          const startMult = prevRunning;
+          const endMult = runningMult;
+          const rafStartAt = t;
+          timers.current.push(window.setTimeout(() => {
+            setSpinWinFlash({ usd: spinWinUsd, kind: "spin" });
+            haptic("light");
+            // Tick the FS running total from startMult → endMult.
+            const started = performance.now();
+            const tick = (now: number) => {
+              const p = Math.min(1, (now - started) / SPIN_WIN_FLASH_MS);
+              const eased = 1 - Math.pow(1 - p, 3);
+              const cur = startMult + (endMult - startMult) * eased;
+              setFsMeta((prev) => prev ? { ...prev, fsMult: cur } : prev);
+              if (p < 1) countRafRef.current = requestAnimationFrame(tick);
+              else countRafRef.current = null;
+            };
+            countRafRef.current = requestAnimationFrame(tick);
+          }, rafStartAt));
+          timers.current.push(window.setTimeout(() => setSpinWinFlash(null), rafStartAt + SPIN_WIN_FLASH_MS));
+          t += SPIN_WIN_FLASH_MS;
+        } else {
+          // Even losing spins should lock the counter at its true value.
+          timers.current.push(window.setTimeout(() => {
+            setFsMeta((prev) => prev ? { ...prev, fsMult: runningMult } : prev);
+          }, t));
+        }
+
+        // Retrigger banner + bump spinsTotal by +5 AFTER this spin lands.
+        if (isRetrigger) {
+          timers.current.push(window.setTimeout(() => {
+            setRetriggerFlash(true);
+            haptic("medium");
+            setFsMeta((prev) => prev ? { ...prev, spinsTotal: prev.spinsTotal + SWASH_FS_RETRIGGER_AWARD } : prev);
+          }, t));
+          timers.current.push(window.setTimeout(() => setRetriggerFlash(false), t + RETRIGGER_FLASH_MS));
+          t += RETRIGGER_FLASH_MS;
+        }
+
+        // Tick the spin index (the "spins left" counter).
         timers.current.push(window.setTimeout(() => {
-          setFsMeta((prev) => prev ? { ...prev, spinIdx: idx, fsMult: mult } : prev);
+          setFsMeta((prev) => prev ? { ...prev, spinIdx: idx } : prev);
         }, t));
         t += FS_BETWEEN_MS;
       }
@@ -401,6 +475,21 @@ export function SwashBooze({ onBack, onError }: Props) {
           {winCounterUsd != null && phase === "idle" && !bigWin && (
             <div className="swash-win-counter">{fmtUsd(winCounterUsd)}</div>
           )}
+
+          {/* Per-spin/per-tumble win popup — floats over the grid and fades. */}
+          {spinWinFlash && !bigWin && (
+            <div
+              className={`swash-spin-win is-${spinWinFlash.kind}`}
+              key={`${spinWinFlash.usd}-${spinWinFlash.kind}-${stepCounter}`}
+            >
+              <div className="swash-spin-win-amount">+{fmtUsd(spinWinFlash.usd)}</div>
+            </div>
+          )}
+
+          {/* Retrigger banner — "+5 FREE SPINS" during FS when 3+ scatters land. */}
+          {retriggerFlash && (
+            <div className="swash-retrigger">+{SWASH_FS_RETRIGGER_AWARD} FREE SPINS</div>
+          )}
         </div>
 
         {/* Feature buttons — horizontal row below the grid on mobile */}
@@ -489,8 +578,9 @@ export function SwashBooze({ onBack, onError }: Props) {
         </div>
       </div>
 
-      {/* Buy confirmation modal */}
-      {showBuyModal && (
+      {/* Buy confirmation modal — portaled to body so any transformed
+          ancestor of .swash-screen doesn't break position:fixed centering. */}
+      {showBuyModal && createPortal(
         <div className="swash-buy-modal-bg" onClick={() => setShowBuyModal(false)}>
           <div className="swash-buy-modal" onClick={(e) => e.stopPropagation()}>
             <div className="swash-buy-modal-title">Buy Bonus Round?</div>
@@ -520,7 +610,8 @@ export function SwashBooze({ onBack, onError }: Props) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
