@@ -40,7 +40,7 @@ html {
   text-size-adjust: 100%;
 }
 
-html, body, #root {
+html, body {
   margin: 0;
   padding: 0;
   height: 100%;
@@ -56,6 +56,16 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   overscroll-behavior-y: none;
+}
+/* Root sizes to whatever Telegram says the visible viewport is, falling back
+   through dynamic viewport units and finally 100%. This is load-bearing on
+   iOS Telegram, where the document would otherwise extend beyond the visible
+   chrome and clip the pill-tabs row under the Telegram header. */
+#root {
+  height: var(--tg-viewport-height, 100dvh);
+  min-height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 button { font-family: inherit; cursor: pointer; }
