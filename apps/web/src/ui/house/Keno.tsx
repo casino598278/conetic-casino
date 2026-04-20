@@ -300,8 +300,8 @@ export function Keno({ onBack, onError, onOpenFairness }: Props) {
           </div>
           <div className="keno-summary-item">
             <span className="keno-summary-lbl">Payout</span>
-            <span className={`keno-summary-val ${lastMult != null && lastMult > 0 ? "is-win" : lastMult === 0 ? "is-loss" : ""}`}>
-              {lastMult != null ? `${lastMult.toFixed(2)}×` : "—"}
+            <span className={`keno-summary-val ${lastMult != null && lastMult > 0 ? "is-win" : ""}`}>
+              {lastMult == null ? "—" : lastMult > 0 ? `${lastMult.toFixed(2)}×` : "0×"}
             </span>
           </div>
         </div>
@@ -317,11 +317,15 @@ export function Keno({ onBack, onError, onOpenFairness }: Props) {
       {picks.size > 0 && (
         <div className="keno-paytable">
           {paytable.map((m, hits) => {
+            // Hide zero-mult rows entirely — they're clutter. When the round
+            // lands on a zero-mult hit count, the Hits + Payout summary still
+            // reports it.
+            if (m <= 0) return null;
             const active = lastHits === hits;
             return (
-              <div key={hits} className={`keno-paytable-cell ${active ? "is-active" : ""} ${m === 0 ? "is-zero" : ""}`}>
-                <div className="keno-paytable-mult">{m > 0 ? `${m.toFixed(2)}×` : "—"}</div>
-                <div className="keno-paytable-hits">{hits}×</div>
+              <div key={hits} className={`keno-paytable-cell ${active ? "is-active" : ""}`}>
+                <div className="keno-paytable-mult">{m.toFixed(2)}×</div>
+                <div className="keno-paytable-hits">{hits} hit{hits === 1 ? "" : "s"}</div>
               </div>
             );
           })}
