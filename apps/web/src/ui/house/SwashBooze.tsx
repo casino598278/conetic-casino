@@ -101,7 +101,7 @@ export function SwashBooze({ onBack, onError }: Props) {
   // FS intro modal. Matches the Sweet Bonanza trigger animation where the
   // scatter symbols swarm the whole grid before transitioning to FS.
   const [showFsSwarm, setShowFsSwarm] = useState(false);
-  const [showFsOutro, setShowFsOutro] = useState<null | { totalMult: number; stakeUsd: number }>(null);
+  const [showFsOutro, setShowFsOutro] = useState<null | { totalMult: number; stakeUsd: number; spinsPlayed: number }>(null);
   const [winCounterUsd, setWinCounterUsd] = useState<number | null>(null);
   // Floating per-spin/per-tumble win amount popup over the grid.
   const [spinWinFlash, setSpinWinFlash] = useState<null | { usd: number; kind: "tumble" | "spin" }>(null);
@@ -386,7 +386,11 @@ export function SwashBooze({ onBack, onError }: Props) {
         const prevRunning = runningMult;
         runningMult += fsSpin.spinWin;
         const idx = si + 1;
-        const isRetrigger = fsSpin.initialScatters >= SWASH_FS_RETRIGGER_SCATTERS;
+        // Retriggers are disabled for bought bonus (engine does not add spins
+        // in buy mode). So the UI must also not show the "+5 FREE SPINS"
+        // banner or bump the counter in buy mode, otherwise we promise spins
+        // that never play.
+        const isRetrigger = r.mode !== "buy" && fsSpin.initialScatters >= SWASH_FS_RETRIGGER_SCATTERS;
 
         if (spinWinUsd > 0) {
           const popAt = t;
@@ -423,8 +427,9 @@ export function SwashBooze({ onBack, onError }: Props) {
 
       // FS outro.
       const outroAt = t;
+      const spinsPlayed = r.outcome.freeSpins.spins.length;
       at(outroAt, () => {
-        setShowFsOutro({ totalMult: r.outcome.freeSpins.fsMultiplier, stakeUsd });
+        setShowFsOutro({ totalMult: r.outcome.freeSpins.fsMultiplier, stakeUsd, spinsPlayed });
         haptic("heavy");
       });
       at(outroAt + FS_OUTRO_MS - 200, () => setShowFsOutro(null));
@@ -519,17 +524,26 @@ export function SwashBooze({ onBack, onError }: Props) {
     setGrid(step.grid);
     setBombs(step.bombs);
     setScatterCount(step.scatterCount);
-    const ws = new Set<string>();
-    for (const c of step.winningCells) ws.add(`${c.row},${c.col}`);
-    setWinCells(ws);
     // Bump stepCounter so React re-renders the grid (cellGen is a ref, not state).
     setStepCounter((n) => n + 1);
     // Soft drop thud for every new grid (every step).
     snd("drop");
+
+    // IMPORTANT: win-cells highlight + win-pulse + burst must fire only
+    // AFTER the drop animation has landed, otherwise the player sees the
+    // "winning" state (gold pulse + burst) before the cluster has visually
+    // arrived on the grid.
+    const revealDelay = STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS + 40;
     if (step.winningCells.length > 0) {
-      // Haptic only fires on CLUSTER wins — drops alone don't buzz the device.
-      haptic("light");
-      snd("win");
+      timers.current.push(window.setTimeout(() => {
+        const ws = new Set<string>();
+        for (const c of step.winningCells) ws.add(`${c.row},${c.col}`);
+        setWinCells(ws);
+        haptic("light");
+        snd("win");
+      }, revealDelay));
+    } else {
+      setWinCells(new Set());
     }
     if (step.bombs.length > 0) snd("bomb");
     // Scatter ding — only when count increases (new scatter landed).
@@ -796,7 +810,7 @@ export function SwashBooze({ onBack, onError }: Props) {
               <div className="swash-fs-intro-splat">
                 <div className="swash-fs-intro-big">{fmtUsd(showFsOutro.totalMult * showFsOutro.stakeUsd)}</div>
               </div>
-              <div className="swash-fs-intro-bottom">IN {SWASH_FREE_SPINS} FREE SPINS</div>
+              <div className="swash-fs-intro-bottom">IN {showFsOutro.spinsPlayed} FREE SPINS</div>
               <div className="swash-fs-intro-hint">PRESS ANYWHERE TO CONTINUE</div>
             </div>
           )}
