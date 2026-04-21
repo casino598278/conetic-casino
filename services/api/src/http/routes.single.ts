@@ -21,11 +21,6 @@ import {
   KENO_MIN_PICKS,
   KENO_MAX_PICKS,
   type KenoRisk,
-  playSwashBooze,
-  swashBoozeMaxMultiplier,
-  swashBoozeStakeMultiplier,
-  validateSwashBoozeParams,
-  type SwashBoozeParams,
 } from "@conetic/shared";
 import { requireAuthHook } from "../auth/authPlugin.js";
 import { playHouseGame, publicSeedState, maxWinTon } from "../game/houseGameEngine.js";
@@ -47,11 +42,6 @@ const DicePlayBody = PlayBody.extend({
 
 const LimboPlayBody = PlayBody.extend({
   target: z.number().min(LIMBO_MIN_TARGET).max(LIMBO_MAX_TARGET),
-});
-
-const SwashPlayBody = PlayBody.extend({
-  mode: z.enum(["spin", "buy"]),
-  ante: z.boolean().optional(),
 });
 
 const KenoPlayBody = PlayBody.extend({
@@ -241,57 +231,4 @@ export async function registerSingleRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/single/swashbooze/play", { preHandler: requireAuthHook }, async (req, reply) => {
-    if (!req.user) return reply.code(401).send({ error: "unauthenticated" });
-    const parsed = SwashPlayBody.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: "bad request" });
-    const params: SwashBoozeParams = {
-      mode: parsed.data.mode,
-      ante: parsed.data.ante ?? false,
-    };
-
-    // Ante bet + bonus buy are mutually exclusive.
-    if (params.mode === "buy" && params.ante) {
-      return reply.code(400).send({ error: "ante_disabled_with_buy" });
-    }
-
-    // Stake multiplier: 1× normal, 1.25× with ante, 100× on buy. Charged
-    // server-side so the client just sends its base bet regardless of mode.
-    const baseBetNano = BigInt(parsed.data.amountNano);
-    const stakeMult = swashBoozeStakeMultiplier(params);
-    // Use 10_000-scaled integer math so 1.25× stays exact.
-    const scaledMult = BigInt(Math.round(stakeMult * 10_000));
-    const effectiveStake = (baseBetNano * scaledMult) / 10_000n;
-
-    const maxMult = swashBoozeMaxMultiplier(params.mode);
-    const result = await playHouseGame({
-      userId: req.user.sub,
-      game: "swashbooze",
-      betNano: effectiveStake,
-      params,
-      validate: validateSwashBoozeParams,
-      compute: async ({ serverSeedHex, clientSeedHex, nonce, params: p }) => {
-        const outcome = await playSwashBooze(serverSeedHex, clientSeedHex, nonce, p);
-        return { outcome, multiplier: outcome.multiplier, maxMultiplier: maxMult };
-      },
-    });
-    if (!result.ok) return reply.code(409).send({ error: result.error, meta: result.meta });
-    return reply.send({
-      ok: true,
-      outcome: result.outcome,
-      multiplier: result.multiplier,
-      // Echo the actual amount debited (spin = 1×, buy = 100×) so the client
-      // can display the correct "spent" figure regardless of mode.
-      betNano: result.betNano,
-      baseBetNano: baseBetNano.toString(),
-      mode: params.mode,
-      ante: !!params.ante,
-      payoutNano: result.payoutNano,
-      newBalanceNano: result.newBalanceNano,
-      nonce: result.nonce,
-      serverSeedHash: result.serverSeedHash,
-      clientSeedHex: result.clientSeedHex,
-      playId: result.playId,
-    });
-  });
 }

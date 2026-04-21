@@ -15,10 +15,6 @@ const ORIGINALS: TileSpec[] = [
   { key: "keno",  name: "Keno",  game: "keno"  },
 ];
 
-const SLOTS: TileSpec[] = [
-  { key: "swashbooze", name: "Swash Booze", sub: "Cluster pays", game: "swashbooze" },
-];
-
 const MULTIPLAYER: TileSpec[] = [
   { key: "arena",  name: "Arena",  sub: "Free-for-all", game: "arena"  },
   { key: "mining", name: "Mining", sub: "Gem race",     game: "mining" },
@@ -26,7 +22,6 @@ const MULTIPLAYER: TileSpec[] = [
 
 const CATEGORIES: { key: BrowseCategory; label: string }[] = [
   { key: "originals",   label: "Originals"   },
-  { key: "slots",       label: "Slots"       },
   { key: "multiplayer", label: "Multiplayer" },
 ];
 
@@ -37,7 +32,6 @@ export function BrowseHome() {
 
   const section =
     category === "originals"   ? { title: "Originals",   tiles: ORIGINALS   }
-  : category === "slots"       ? { title: "Slots",       tiles: SLOTS       }
   :                              { title: "Multiplayer", tiles: MULTIPLAYER };
 
   return (

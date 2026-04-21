@@ -110,58 +110,12 @@ const keno = (
   </g>
 );
 
-/* Swash Booze — cluster-style slot. Stylized 2x3 mini-grid of fruit chips
-   on a candy-pink tint, with a '×100' bonus-buy tag. */
-const swashBooze = (
-  <g>
-    {/* mini grid */}
-    {[0, 1, 2, 3, 4].map((r) =>
-      [0, 1, 2].map((c) => {
-        const x = 34 + c * 32;
-        const y = 22 + r * 28;
-        // Sprinkle accent-colored cells to suggest a cluster win.
-        const lit = (r + c) % 3 === 0;
-        return (
-          <rect
-            key={`${r}-${c}`}
-            x={x}
-            y={y}
-            width="26"
-            height="24"
-            rx="6"
-            fill={lit ? ACCENT : "none"}
-            stroke={lit ? ACCENT : STROKE}
-            strokeWidth="1.3"
-            opacity={lit ? 0.9 : 0.55}
-          />
-        );
-      }),
-    )}
-    {/* BUY 100× sticker */}
-    <g transform="translate(118 150) rotate(-12)">
-      <rect x="-22" y="-10" width="44" height="20" rx="4" fill={ACCENT} />
-      <text
-        x="0"
-        y="4"
-        fontFamily="ui-sans-serif, sans-serif"
-        fontSize="11"
-        fontWeight="700"
-        fill={SURFACE}
-        textAnchor="middle"
-      >
-        ×100
-      </text>
-    </g>
-  </g>
-);
-
 const TILE_ART: Record<string, JSX.Element> = {
   dice,
   limbo,
   arena,
   mining,
   keno,
-  swashbooze: swashBooze,
 };
 
 interface Props {
