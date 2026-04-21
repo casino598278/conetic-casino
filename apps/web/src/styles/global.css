@@ -1,4 +1,4 @@
-/* Conetic — mint green on dark charcoal. */
+/* Conetic — warm amber on dark charcoal. */
 
 @import "./tokens.css";
 
@@ -18,7 +18,7 @@
   --blue-d: var(--c-accent-lo);
   --blue-l: var(--c-accent-hi);
   --blue-g: var(--c-accent-wash);
-  --blue-f: rgba(76, 201, 122, 0.05);
+  --blue-f: rgba(245, 181, 68, 0.05);
   --blue-glow: var(--c-accent-glow);
   --gold:   var(--c-warn);
   --win:    var(--c-win);
@@ -760,8 +760,8 @@ input, textarea { font-family: inherit; }
   margin-bottom: 8px;
 }
 .history-mult {
-  background: var(--stake-green);
-  color: var(--stake-bg);
+  background: var(--c-win);
+  color: var(--c-bg);
   border-radius: var(--rr-sm);
   padding: 3px 10px;
   font-size: 12px;
@@ -769,10 +769,10 @@ input, textarea { font-family: inherit; }
   font-variant-numeric: tabular-nums;
 }
 .history-mult.is-loss {
-  background: var(--stake-red);
+  background: var(--c-loss);
   color: #fff;
 }
-.history-amount.is-win { color: var(--stake-green); }
+.history-amount.is-win { color: var(--c-win); }
 .history-amount.is-loss { color: var(--stake-text-3); }
 .history-meta {
   font-size: 11px;

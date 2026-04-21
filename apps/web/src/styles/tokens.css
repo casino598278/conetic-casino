@@ -1,34 +1,35 @@
-/* Design tokens — soft mint green on dark charcoal.
-   One accent color, no chromatic decoration. */
+/* Design tokens — modern fintech dark: warm-neutral blacks, single
+   amber accent for actions, clean greens/reds for state. Aims to feel
+   more like Revolut / Polymarket / Coinbase than a neon casino. */
 
 :root {
-  /* Surfaces — neutral charcoal, not pure black. Slight coolness for depth
-     without looking tinted. Each layer is a clearly-distinguishable step. */
-  --c-bg:        #0a0f0c;  /* body / deepest recess */
-  --c-bg-2:      #0e1310;  /* behind top/bottom nav */
-  --c-surface:   #141a16;  /* cards, tiles, stage, panel */
-  --c-surface-2: #1c241f;  /* hovered card, input recess, input fill */
-  --c-surface-3: #263028;  /* elevated chips, outer borders */
-  --c-border:    #222a24;
-  --c-border-2:  #2f3a32;
+  /* Surfaces — warm neutral charcoal. Each layer is a clean 2-3 point
+     step so cards stand out without heavy borders. */
+  --c-bg:        #0d0e10;  /* body / deepest recess */
+  --c-bg-2:      #111215;  /* behind top/bottom nav */
+  --c-surface:   #181a1e;  /* cards, tiles, stage, panel */
+  --c-surface-2: #202329;  /* hovered card, input recess, input fill */
+  --c-surface-3: #2a2e35;  /* elevated chips, outer borders */
+  --c-border:    #25282e;
+  --c-border-2:  #363a43;
 
-  /* Text — pale neutral, readable on dark */
-  --c-text:   #e8efe9;
-  --c-text-2: #9aa89f;
-  --c-text-3: #6a7a70;
+  /* Text — clean off-whites, never pure #fff */
+  --c-text:   #f5f6f8;
+  --c-text-2: #9aa0ac;
+  --c-text-3: #63697a;
 
-  /* Accent — muted mint green. Softer than neon — readable on dark cards,
-     doesn't "scream" on large surfaces. Solid enough for button fills. */
-  --c-accent:       #4cc97a;
-  --c-accent-hi:    #62d68b;
-  --c-accent-lo:    #3aad63;
-  --c-accent-wash:  rgba(76, 201, 122, 0.10);
-  --c-accent-glow:  rgba(76, 201, 122, 0.20);
+  /* Accent — warm amber. Confident, premium, readable on dark. Not a
+     neon casino green. Green/red still reserved for true win/loss. */
+  --c-accent:       #f5b544;
+  --c-accent-hi:    #ffc95f;
+  --c-accent-lo:    #d99a2a;
+  --c-accent-wash:  rgba(245, 181, 68, 0.10);
+  --c-accent-glow:  rgba(245, 181, 68, 0.22);
 
-  /* State */
-  --c-win:   #4cc97a;
-  --c-loss:  #e25f74;
-  --c-warn:  #f1a73e;
+  /* State — pure semantic, distinct from accent */
+  --c-win:   #3ecf8e;
+  --c-loss:  #ff5875;
+  --c-warn:  #f5b544;
 
   /* Layout */
   --shell-top-h:    56px;
@@ -36,12 +37,12 @@
   --shell-pad-x:    14px;
   --shell-pad-x-lg: 18px;
 
-  /* Radii */
-  --rr-xs:   3px;
-  --rr-sm:   6px;
-  --rr:      10px;
-  --rr-lg:   14px;
-  --rr-xl:   18px;
+  /* Radii — slightly larger for a more modern, soft feel */
+  --rr-xs:   4px;
+  --rr-sm:   8px;
+  --rr:      12px;
+  --rr-lg:   16px;
+  --rr-xl:   22px;
   --rr-pill: 999px;
 
   /* Type */
