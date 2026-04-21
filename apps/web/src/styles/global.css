@@ -2436,6 +2436,13 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   border: 4px dashed #ff4b7a;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18), inset 0 0 0 2px #fff;
   z-index: 1;
+  transition: background var(--t-md), border-color var(--t-md);
+}
+/* Free-spins night variant — purple tint + cooler border */
+.swash-stage.is-fs .swash-grid-frame {
+  background: linear-gradient(180deg, rgba(200, 180, 230, 0.88), rgba(180, 150, 220, 0.82));
+  border-color: #c35dff;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), inset 0 0 0 2px #fff, 0 0 24px rgba(195, 93, 255, 0.4);
 }
 
 .swash-grid {
@@ -2443,6 +2450,7 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   grid-template-columns: repeat(6, 1fr);
   gap: 4px;
   width: 100%;
+  position: relative; /* anchor for absolute children like .swash-cluster-popup */
   /* Constrain paint/layout work to the grid so cell animations don't
      trigger layout in the parent tree. */
   contain: layout paint;
@@ -3121,6 +3129,60 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   border: 3px solid #fff;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
   font-variant-numeric: tabular-nums;
+}
+
+/* Lollipop-swarm fullscreen transition on FS trigger.
+   A tiled background of pink/white candy swirls zooms in, covering the
+   entire stage briefly before revealing the FS intro. */
+.swash-fs-swarm {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  /* A repeating radial-gradient that approximates lollipop swirls. */
+  background-image:
+    radial-gradient(circle at 15% 20%, #ff4b7a 0 18px, #fff 18px 24px, #ff4b7a 24px 30px, #fff 30px 36px, transparent 36px),
+    radial-gradient(circle at 60% 45%, #ff6fa8 0 18px, #fff 18px 24px, #ff6fa8 24px 30px, #fff 30px 36px, transparent 36px),
+    radial-gradient(circle at 85% 75%, #ff4b7a 0 18px, #fff 18px 24px, #ff4b7a 24px 30px, #fff 30px 36px, transparent 36px),
+    radial-gradient(circle at 30% 80%, #ffb4d6 0 16px, #fff 16px 22px, #ffb4d6 22px 28px, #fff 28px 34px, transparent 34px),
+    linear-gradient(180deg, #ff9ac6, #ff4b7a);
+  background-size: 120px 120px, 140px 140px, 100px 100px, 150px 150px, cover;
+  animation: swash-fs-swarm 650ms ease-out forwards;
+  will-change: transform, opacity;
+}
+@keyframes swash-fs-swarm {
+  0%   { opacity: 0; transform: scale(1.4); }
+  20%  { opacity: 1; transform: scale(1); }
+  70%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.95); }
+}
+
+/* Per-cluster +$X floating popup, positioned inside .swash-grid at the
+   centroid of each winning cluster. Rises + fades over 900ms. */
+.swash-cluster-popup {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 4px 10px;
+  font-size: 14px;
+  font-weight: 900;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  text-shadow:
+    -1px -1px 0 #3a0d63, 1px -1px 0 #3a0d63,
+    -1px 1px 0 #3a0d63, 1px 1px 0 #3a0d63,
+    0 3px 6px rgba(0, 0, 0, 0.5);
+  z-index: 6;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: swash-cluster-rise 900ms cubic-bezier(.25, .8, .3, 1) forwards;
+  will-change: transform, opacity;
+}
+@keyframes swash-cluster-rise {
+  0%   { opacity: 0; transform: translate(-50%, -30%) scale(0.7); }
+  18%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  30%  { opacity: 1; transform: translate(-50%, -52%) scale(1); }
+  80%  { opacity: 1; transform: translate(-50%, -90%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -120%) scale(0.95); }
 }
 
 /* Tumble-win purple pill above the grid */

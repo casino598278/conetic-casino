@@ -95,6 +95,10 @@ export function SwashBooze({ onBack, onError }: Props) {
   const [bigWin, setBigWin] = useState<null | { tier: WinTier; multiplier: number; stakeUsd: number }>(null);
   const [niceFlash, setNiceFlash] = useState<null | { usd: number }>(null);
   const [showFsIntro, setShowFsIntro] = useState(false);
+  // Fullscreen lollipop-swarm transition shown for ~500ms right before the
+  // FS intro modal. Matches the Sweet Bonanza trigger animation where the
+  // scatter symbols swarm the whole grid before transitioning to FS.
+  const [showFsSwarm, setShowFsSwarm] = useState(false);
   const [showFsOutro, setShowFsOutro] = useState<null | { totalMult: number; stakeUsd: number }>(null);
   const [winCounterUsd, setWinCounterUsd] = useState<number | null>(null);
   // Floating per-spin/per-tumble win amount popup over the grid.
@@ -103,6 +107,16 @@ export function SwashBooze({ onBack, onError }: Props) {
   const [retriggerFlash, setRetriggerFlash] = useState(false);
   // Tumble-win pill: purple banner above grid showing running tumble total.
   const [tumblePill, setTumblePill] = useState<null | { usd: number; multiplier?: number }>(null);
+  // Per-cluster floating "+$X" popups inside the grid. Each one is positioned
+  // at the centroid of its cluster's winning cells and fades upward. Multiple
+  // can be visible at once when a step has multiple winning clusters.
+  const [clusterPopups, setClusterPopups] = useState<Array<{
+    id: number;
+    row: number;  // centroid (fractional)
+    col: number;  // centroid
+    usd: number;
+  }>>([]);
+  const clusterPopupIdRef = useRef(0);
   // Track ALL outstanding RAFs (count-up for FS running total, count-up for
   // final settle, etc). The previous single-ref version could leak if a new
   // RAF was started while an old one was still ticking.
@@ -240,6 +254,8 @@ export function SwashBooze({ onBack, onError }: Props) {
     setRetriggerFlash(false);
     setNiceFlash(null);
     setTumblePill(null);
+    setClusterPopups([]);
+    setShowFsSwarm(false);
 
     // Effective stake for this round — what × multipliers in the outcome
     // apply to. For buy that's 100× bet; for ante 1.25× bet; else 1× bet.
@@ -297,13 +313,24 @@ export function SwashBooze({ onBack, onError }: Props) {
 
     // ── FREE SPINS ─────────────────────────────────────────────────────
     if (r.outcome.freeSpins.triggered) {
+      // Lollipop-swarm fullscreen transition — brief scatter burst that
+      // covers the whole grid before the FS intro modal shows.
+      const swarmMs = 650;
+      const swarmAt = t;
+      at(swarmAt, () => {
+        setShowFsSwarm(true);
+        snd("fs-trigger");
+        haptic("medium");
+      });
+      at(swarmAt + swarmMs, () => setShowFsSwarm(false));
+      t += swarmMs;
+
       const introAt = t;
       at(introAt, () => {
         setPhase("fs");
         setShowFsIntro(true);
         setFsMeta({ spinsTotal: SWASH_FREE_SPINS, spinIdx: 0, fsMult: 0, stakeUsd });
         haptic("medium");
-        snd("fs-trigger");
       });
       at(introAt + FS_INTRO_MS - 200, () => setShowFsIntro(false));
       t += FS_INTRO_MS;
@@ -407,6 +434,7 @@ export function SwashBooze({ onBack, onError }: Props) {
       setFsMeta(null);
       setBombs([]);
       setTumblePill(null);
+      setClusterPopups([]);
       if (r.multiplier > 0 && usdPerTon != null) {
         const usd = nanoToUsd(BigInt(r.payoutNano), usdPerTon);
         animateCountUp(usd);
@@ -479,6 +507,39 @@ export function SwashBooze({ onBack, onError }: Props) {
     // Scatter ding — only when count increases (new scatter landed).
     if (step.scatterCount > prevScatterCountRef.current) snd("scatter");
     prevScatterCountRef.current = step.scatterCount;
+
+    // Spawn per-cluster floating +$X popups inside the grid.
+    if (step.winningCells.length > 0 && step.stepMultiplier > 0) {
+      const byCluster = new Map<SwashSymbol, { cells: { row: number; col: number }[]; count: number }>();
+      for (const c of step.winningCells) {
+        const sym = step.grid[c.row]![c.col]!;
+        const existing = byCluster.get(sym);
+        if (existing) {
+          existing.cells.push({ row: c.row, col: c.col });
+          existing.count++;
+        } else {
+          byCluster.set(sym, { cells: [{ row: c.row, col: c.col }], count: 1 });
+        }
+      }
+      const stake = stakeUsdRef.current;
+      const popups: Array<{ id: number; row: number; col: number; usd: number }> = [];
+      for (const [sym, data] of byCluster) {
+        const pay = paytableClient(sym, data.count) * stake;
+        if (pay <= 0) continue;
+        // Centroid of cluster cells.
+        let rSum = 0, cSum = 0;
+        for (const { row, col } of data.cells) { rSum += row; cSum += col; }
+        popups.push({
+          id: ++clusterPopupIdRef.current,
+          row: rSum / data.cells.length,
+          col: cSum / data.cells.length,
+          usd: pay,
+        });
+      }
+      if (popups.length > 0) setClusterPopups(popups);
+    } else {
+      setClusterPopups([]);
+    }
   };
 
   const animateCountUp = (targetUsd: number) => {
@@ -565,6 +626,9 @@ export function SwashBooze({ onBack, onError }: Props) {
         <div className="swash-cloud swash-cloud-2" aria-hidden />
         <div className="swash-cloud swash-cloud-3" aria-hidden />
 
+        {/* Lollipop swarm — fullscreen scatter-burst transition on FS trigger */}
+        {showFsSwarm && <div className="swash-fs-swarm" aria-hidden />}
+
         {/* Top banner slot: in-flow, fixed height, mutually exclusive
             content. Never overlaps the grid because it sits above it in
             the flex column. */}
@@ -609,6 +673,21 @@ export function SwashBooze({ onBack, onError }: Props) {
                 </div>
               );
             }))}
+
+            {/* Per-cluster +$X floating popups — positioned in % of the grid
+                size so they track the centroid of each winning cluster. */}
+            {clusterPopups.map((p) => (
+              <div
+                key={p.id}
+                className="swash-cluster-popup"
+                style={{
+                  top: `${((p.row + 0.5) / SWASH_GRID_H) * 100}%`,
+                  left: `${((p.col + 0.5) / SWASH_GRID_W) * 100}%`,
+                }}
+              >
+                +{fmtUsd(p.usd)}
+              </div>
+            ))}
           </div>
 
           {/* Scatter counter — show while rolling too so player sees the build-up */}
@@ -696,6 +775,7 @@ export function SwashBooze({ onBack, onError }: Props) {
               <div className="swash-spin-win-amount">+{fmtUsd(spinWinFlash.usd)}</div>
             </div>
           )}
+
 
           {/* Retrigger banner — "+5 FREE SPINS" during FS when 3+ scatters land. */}
           {retriggerFlash && (
@@ -832,6 +912,29 @@ export function SwashBooze({ onBack, onError }: Props) {
       )}
     </div>
   );
+}
+
+// Client-side copy of the server paytable, used to compute per-cluster USD
+// for the in-grid floating popups. Server is still authoritative for real
+// payouts — this only drives visual labels.
+const PAYTABLE_CLIENT: Record<string, [number, number, number]> = {
+  red:        [2.00, 5.00, 50.00],
+  purple:     [1.50, 2.00, 25.00],
+  green:      [1.00, 1.50, 15.00],
+  blue:       [0.75, 1.00, 12.00],
+  apple:      [0.60, 0.80, 10.00],
+  plum:       [0.40, 0.60,  8.00],
+  watermelon: [0.25, 0.30,  5.00],
+  grape:      [0.20, 0.30,  4.00],
+  banana:     [0.20, 0.30,  2.00],
+};
+function paytableClient(symbol: SwashSymbol, count: number): number {
+  if (count < 8) return 0;
+  const row = PAYTABLE_CLIENT[symbol];
+  if (!row) return 0;
+  if (count >= 12) return row[2]!;
+  if (count >= 10) return row[1]!;
+  return row[0]!;
 }
 
 type WinTier = "big" | "mega" | "epic" | "sensational" | "legendary";
