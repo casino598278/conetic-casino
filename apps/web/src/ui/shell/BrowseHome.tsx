@@ -16,8 +16,8 @@ const ORIGINALS: TileSpec[] = [
 ];
 
 const MULTIPLAYER: TileSpec[] = [
-  { key: "arena",  name: "Arena",  sub: "Free-for-all", game: "arena"  },
-  { key: "mining", name: "Mining", sub: "Gem race",     game: "mining" },
+  { key: "arena",  name: "Arena",  game: "arena"  },
+  { key: "mining", name: "Mining", game: "mining" },
 ];
 
 const CATEGORIES: { key: BrowseCategory; label: string }[] = [
