@@ -260,12 +260,17 @@ export function Dice({ onBack, onError, onOpenFairness }: Props) {
   const half = () => setAmountUsd((parseFloat(amount) || 0) / 2);
   const double = () => {
     const doubled = (parseFloat(amount) || 0) * 2;
-    const balUsd = usdPerTon != null ? nanoToUsd(balance, usdPerTon) : doubled;
+    const balUsd = usdPerTon != null ? Math.floor(nanoToUsd(balance, usdPerTon) * 100) / 100 : doubled;
     setAmountUsd(doubled > balUsd ? balUsd : doubled);
   };
   const maxBet = () => {
     if (usdPerTon == null) return;
-    setAmountUsd(nanoToUsd(balance, usdPerTon));
+    // Round DOWN to 2 decimals so the USD→nano round-trip can't inflate
+    // past the actual balance (toFixed rounds to nearest, which sometimes
+    // rounds up and trips "insufficient balance").
+    const raw = nanoToUsd(balance, usdPerTon);
+    const floored = Math.floor(raw * 100) / 100;
+    setAmountUsd(floored);
   };
 
   const targetPct = ((target - DICE_MIN_TARGET) / (DICE_MAX_TARGET - DICE_MIN_TARGET)) * 100;

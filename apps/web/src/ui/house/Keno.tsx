@@ -204,12 +204,14 @@ export function Keno({ onBack, onError, onOpenFairness }: Props) {
   const half = () => setAmountUsd((parseFloat(amount) || 0) / 2);
   const double = () => {
     const doubled = (parseFloat(amount) || 0) * 2;
-    const balUsd = usdPerTon != null ? nanoToUsd(balance, usdPerTon) : doubled;
+    const balUsd = usdPerTon != null ? Math.floor(nanoToUsd(balance, usdPerTon) * 100) / 100 : doubled;
     setAmountUsd(doubled > balUsd ? balUsd : doubled);
   };
   const maxBet = () => {
     if (usdPerTon == null) return;
-    setAmountUsd(nanoToUsd(balance, usdPerTon));
+    // Floor to 2dp so the USD→nano round-trip can't inflate past balance.
+    const raw = nanoToUsd(balance, usdPerTon);
+    setAmountUsd(Math.floor(raw * 100) / 100);
   };
 
   const betReady = !busy && !rolling && picks.size > 0 && (parseFloat(amount) || 0) > 0;
