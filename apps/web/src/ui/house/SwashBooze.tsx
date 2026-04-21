@@ -107,6 +107,11 @@ export function SwashBooze({ onBack, onError }: Props) {
   const [retriggerFlash, setRetriggerFlash] = useState(false);
   // Tumble-win pill: purple banner above grid showing running tumble total.
   const [tumblePill, setTumblePill] = useState<null | { usd: number; multiplier?: number }>(null);
+  // Current in-flight WIN counter (counts up live during cascades), plus the
+  // breakdown line ("8× [symbol] PAYS $X"). Tracks the step that paid last.
+  const [liveWinUsd, setLiveWinUsd] = useState<number>(0);
+  const liveWinUsdRef = useRef<number>(0);
+  const [winBreakdown, setWinBreakdown] = useState<null | { symbol: SwashSymbol; count: number; payUsd: number }>(null);
   // Per-cluster floating "+$X" popups inside the grid. Each one is positioned
   // at the centroid of its cluster's winning cells and fades upward. Multiple
   // can be visible at once when a step has multiple winning clusters.
@@ -256,6 +261,10 @@ export function SwashBooze({ onBack, onError }: Props) {
     setTumblePill(null);
     setClusterPopups([]);
     setShowFsSwarm(false);
+    setLiveWinUsd(0);
+    liveWinUsdRef.current = 0;
+    winCountTargetRef.current = 0;
+    setWinBreakdown(null);
 
     // Effective stake for this round — what × multipliers in the outcome
     // apply to. For buy that's 100× bet; for ante 1.25× bet; else 1× bet.
@@ -435,6 +444,11 @@ export function SwashBooze({ onBack, onError }: Props) {
       setBombs([]);
       setTumblePill(null);
       setClusterPopups([]);
+      // Hide the live WIN readout; the final settle counter takes over.
+      setLiveWinUsd(0);
+      liveWinUsdRef.current = 0;
+      winCountTargetRef.current = 0;
+      setWinBreakdown(null);
       if (r.multiplier > 0 && usdPerTon != null) {
         const usd = nanoToUsd(BigInt(r.payoutNano), usdPerTon);
         animateCountUp(usd);
@@ -508,7 +522,8 @@ export function SwashBooze({ onBack, onError }: Props) {
     if (step.scatterCount > prevScatterCountRef.current) snd("scatter");
     prevScatterCountRef.current = step.scatterCount;
 
-    // Spawn per-cluster floating +$X popups inside the grid.
+    // Spawn per-cluster floating +$X popups inside the grid AND update the
+    // live WIN counter below the grid with a count-up.
     if (step.winningCells.length > 0 && step.stepMultiplier > 0) {
       const byCluster = new Map<SwashSymbol, { cells: { row: number; col: number }[]; count: number }>();
       for (const c of step.winningCells) {
@@ -523,9 +538,15 @@ export function SwashBooze({ onBack, onError }: Props) {
       }
       const stake = stakeUsdRef.current;
       const popups: Array<{ id: number; row: number; col: number; usd: number }> = [];
+      let biggestCluster: { symbol: SwashSymbol; count: number; payUsd: number } | null = null;
+      let stepTotal = 0;
       for (const [sym, data] of byCluster) {
         const pay = paytableClient(sym, data.count) * stake;
         if (pay <= 0) continue;
+        stepTotal += pay;
+        if (!biggestCluster || data.count > biggestCluster.count) {
+          biggestCluster = { symbol: sym, count: data.count, payUsd: pay };
+        }
         // Centroid of cluster cells.
         let rSum = 0, cSum = 0;
         for (const { row, col } of data.cells) { rSum += row; cSum += col; }
@@ -537,9 +558,40 @@ export function SwashBooze({ onBack, onError }: Props) {
         });
       }
       if (popups.length > 0) setClusterPopups(popups);
+      if (biggestCluster) setWinBreakdown(biggestCluster);
+      if (stepTotal > 0) {
+        // Live count-up: tick WIN counter from its current value upward by stepTotal.
+        startWinCountUp(stepTotal);
+      }
     } else {
       setClusterPopups([]);
     }
+  };
+
+  // Count-up the live WIN counter by `delta` USD over ~450ms (half the spin
+  // flash dwell so several can queue without lag). Multiple steps in a
+  // cascade chain each call this sequentially; we accumulate the target.
+  const winCountTargetRef = useRef(0);
+  const startWinCountUp = (delta: number) => {
+    winCountTargetRef.current += delta;
+    const target = winCountTargetRef.current;
+    cancelAllRafs();
+    const start = liveWinUsdRef.current;
+    const started = performance.now();
+    const dur = 450;
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - started) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const cur = start + (target - start) * eased;
+      liveWinUsdRef.current = cur;
+      setLiveWinUsd(cur);
+      if (p < 1) {
+        const nextId = requestAnimationFrame(tick);
+        rafsRef.current.add(nextId);
+      }
+    };
+    const id = requestAnimationFrame(tick);
+    rafsRef.current.add(id);
   };
 
   const animateCountUp = (targetUsd: number) => {
@@ -629,15 +681,18 @@ export function SwashBooze({ onBack, onError }: Props) {
         {/* Lollipop swarm — fullscreen scatter-burst transition on FS trigger */}
         {showFsSwarm && <div className="swash-fs-swarm" aria-hidden />}
 
-        {/* Top banner slot: in-flow, fixed height, mutually exclusive
-            content. Never overlaps the grid because it sits above it in
-            the flex column. */}
+        {/* Top banner slot: in-flow, fixed height. While rolling and no
+            win has registered yet, show "TAP TO STOP REELS!" like real
+            Sweet Bonanza. Otherwise marquee while idle, "SYMBOLS PAY..."
+            as a fallback. */}
         <div className="swash-top-banner-slot" aria-hidden>
-          {phase !== "fs" && !anyOverlay && (
-            !rolling
-              ? <div className="swash-marquee">WIN OVER 21,100× BET</div>
-              : <div className="swash-top-banner">★ SYMBOLS PAY ANYWHERE ON THE SCREEN ★</div>
-          )}
+          {phase !== "fs" && !anyOverlay && (() => {
+            if (rolling && liveWinUsd === 0 && winCounterUsd == null) {
+              return <div className="swash-tap-to-stop">TAP TO STOP REELS!</div>;
+            }
+            if (!rolling) return <div className="swash-marquee">WIN OVER 21,100× BET</div>;
+            return <div className="swash-top-banner">★ SYMBOLS PAY ANYWHERE ON THE SCREEN ★</div>;
+          })()}
         </div>
 
         {/* Grid area — full width on mobile, centered.
@@ -740,11 +795,27 @@ export function SwashBooze({ onBack, onError }: Props) {
             </div>
           )}
 
-          {/* Settle win counter — just the total. Per-cluster breakdown was
-              dropped because it mixed raw paytable multipliers with stake
-              and looked wrong on FS rounds. */}
-          {winCounterUsd != null && phase === "idle" && !bigWin && (
+          {/* Settle win counter — final total at end of round. */}
+          {winCounterUsd != null && phase === "idle" && !bigWin && !rolling && (
             <div className="swash-win-counter">WIN {fmtUsd(winCounterUsd)}</div>
+          )}
+
+          {/* LIVE win readout during cascades. Counts up as clusters land
+              and shows the biggest-cluster breakdown ("8× [icon] PAYS $X").
+              Visible only while rolling in base phase and paying. */}
+          {rolling && phase === "idle" && liveWinUsd > 0 && !bigWin && !niceFlash && !showFsIntro && !showFsOutro && (
+            <div className="swash-win-counter swash-win-counter-live">
+              <div className="swash-win-counter-main">WIN {fmtUsd(liveWinUsd)}</div>
+              {winBreakdown && (
+                <div className="swash-win-breakdown">
+                  <span>{winBreakdown.count}×</span>
+                  <span className="swash-win-breakdown-sym">
+                    <SwashSymbolIcon symbol={winBreakdown.symbol} />
+                  </span>
+                  <span>PAYS {fmtUsd(winBreakdown.payUsd)}</span>
+                </div>
+              )}
+            </div>
           )}
 
           {/* FREE SPINS LEFT N sub-readout during FS (hide once all spins are consumed so we don't show "LEFT 0") */}
