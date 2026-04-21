@@ -127,10 +127,18 @@ export function SwashBooze({ onBack, onError }: Props) {
   // Track ALL outstanding RAFs (count-up for FS running total, count-up for
   // final settle, etc). The previous single-ref version could leak if a new
   // RAF was started while an old one was still ticking.
+  // Three independent RAF slots so the live WIN count-up, FS meta count-up,
+  // and final-settle count-up don't kill each other when they overlap in time.
   const rafsRef = useRef<Set<number>>(new Set());
+  const liveWinRafRef = useRef<number | null>(null);
+  const fsMetaRafRef = useRef<number | null>(null);
+  const settleRafRef = useRef<number | null>(null);
   const cancelAllRafs = () => {
     for (const id of rafsRef.current) cancelAnimationFrame(id);
     rafsRef.current.clear();
+    if (liveWinRafRef.current != null) { cancelAnimationFrame(liveWinRafRef.current); liveWinRafRef.current = null; }
+    if (fsMetaRafRef.current != null) { cancelAnimationFrame(fsMetaRafRef.current); fsMetaRafRef.current = null; }
+    if (settleRafRef.current != null) { cancelAnimationFrame(settleRafRef.current); settleRafRef.current = null; }
   };
   // Effective stake for the CURRENT round in USD. Set in playOutcome(); read
   // in renderStep() so the per-cluster "PAYS $X" subline shows the true win.
@@ -362,10 +370,16 @@ export function SwashBooze({ onBack, onError }: Props) {
         let spinChainUsd = 0;
 
         // Render each cascade step of this FS spin.
+        let firstStep = true;
         for (const step of fsSpin.steps) {
           const stepStart = t;
+          const isFirst = firstStep;
+          firstStep = false;
           at(stepStart, () => {
             currentScaleRef.current = SWASH_FS_CLUSTER_SCALE;
+            // At the START of each FS spin, clear prev-scatter tracking so
+            // the scatter ding fires correctly on this spin's new scatters.
+            if (isFirst) prevScatterCountRef.current = 0;
             renderStep(step);
           });
           const stepPayUsd = step.stepMultiplier * stakeUsd * SWASH_FS_CLUSTER_SCALE;
@@ -486,20 +500,18 @@ export function SwashBooze({ onBack, onError }: Props) {
   // SPIN_WIN_FLASH_MS window. Cancels any in-flight count-up first so we
   // can't race two tickers.
   const startFsCountUp = (startMult: number, endMult: number) => {
-    cancelAllRafs();
+    // Only cancel OUR slot — don't kill live WIN count-up or settle RAF.
+    if (fsMetaRafRef.current != null) cancelAnimationFrame(fsMetaRafRef.current);
     const started = performance.now();
     const tick = (now: number) => {
       const p = Math.min(1, (now - started) / SPIN_WIN_FLASH_MS);
       const eased = 1 - Math.pow(1 - p, 3);
       const cur = startMult + (endMult - startMult) * eased;
       setFsMeta((prev) => prev ? { ...prev, fsMult: cur } : prev);
-      if (p < 1) {
-        const nextId = requestAnimationFrame(tick);
-        rafsRef.current.add(nextId);
-      }
+      if (p < 1) fsMetaRafRef.current = requestAnimationFrame(tick);
+      else fsMetaRafRef.current = null;
     };
-    const id = requestAnimationFrame(tick);
-    rafsRef.current.add(id);
+    fsMetaRafRef.current = requestAnimationFrame(tick);
   };
 
   const renderStep = (step: SwashSpinStep) => {
@@ -569,11 +581,14 @@ export function SwashBooze({ onBack, onError }: Props) {
       const scale = currentScaleRef.current;
       const popups: Array<{ id: number; row: number; col: number; usd: number }> = [];
       let biggestCluster: { symbol: SwashSymbol; count: number; payUsd: number } | null = null;
-      let stepTotal = 0;
+      // AUTHORITATIVE step total from the engine — the exact USD that will
+      // be added to the round's final payout for this step. Using this
+      // (instead of summing client paytable values) guarantees the live
+      // WIN counter matches the final settle amount exactly.
+      const stepTotal = step.stepMultiplier * stake * scale;
       for (const [sym, data] of byCluster) {
         const pay = paytableClient(sym, data.count) * stake * scale;
         if (pay <= 0) continue;
-        stepTotal += pay;
         if (!biggestCluster || data.count > biggestCluster.count) {
           biggestCluster = { symbol: sym, count: data.count, payUsd: pay };
         }
@@ -600,9 +615,11 @@ export function SwashBooze({ onBack, onError }: Props) {
       if (stepTotal > 0) {
         timers.current.push(window.setTimeout(() => startWinCountUp(stepTotal), revealDelay));
       }
-    } else {
-      setClusterPopups([]);
     }
+    // Do NOT clear clusterPopups here — the CSS animation self-fades in
+    // ~900ms, and clearing mid-animation causes an ugly cutoff. The next
+    // paying step's setClusterPopups() replaces them naturally.
+    // Breakdown also persists to next paying step; final settle resets it.
   };
 
   // Count-up the live WIN counter by `delta` USD over ~450ms (half the spin
@@ -612,7 +629,8 @@ export function SwashBooze({ onBack, onError }: Props) {
   const startWinCountUp = (delta: number) => {
     winCountTargetRef.current += delta;
     const target = winCountTargetRef.current;
-    cancelAllRafs();
+    // Cancel only OUR slot so FS meta counter + settle counter keep ticking.
+    if (liveWinRafRef.current != null) cancelAnimationFrame(liveWinRafRef.current);
     const start = liveWinUsdRef.current;
     const started = performance.now();
     const dur = 450;
@@ -622,30 +640,24 @@ export function SwashBooze({ onBack, onError }: Props) {
       const cur = start + (target - start) * eased;
       liveWinUsdRef.current = cur;
       setLiveWinUsd(cur);
-      if (p < 1) {
-        const nextId = requestAnimationFrame(tick);
-        rafsRef.current.add(nextId);
-      }
+      if (p < 1) liveWinRafRef.current = requestAnimationFrame(tick);
+      else liveWinRafRef.current = null;
     };
-    const id = requestAnimationFrame(tick);
-    rafsRef.current.add(id);
+    liveWinRafRef.current = requestAnimationFrame(tick);
   };
 
   const animateCountUp = (targetUsd: number) => {
-    // Cancel any in-flight tickers before starting a new one.
-    cancelAllRafs();
+    // Cancel only the settle slot — the other counters are done by now.
+    if (settleRafRef.current != null) cancelAnimationFrame(settleRafRef.current);
     const start = performance.now();
     const step = (t: number) => {
       const p = Math.min(1, (t - start) / COUNTUP_DUR_MS);
       const eased = 1 - Math.pow(1 - p, 3);
       setWinCounterUsd(targetUsd * eased);
-      if (p < 1) {
-        const nextId = requestAnimationFrame(step);
-        rafsRef.current.add(nextId);
-      }
+      if (p < 1) settleRafRef.current = requestAnimationFrame(step);
+      else settleRafRef.current = null;
     };
-    const id = requestAnimationFrame(step);
-    rafsRef.current.add(id);
+    settleRafRef.current = requestAnimationFrame(step);
   };
 
   // ────────────────────────── bet controls ──────────────────────────
@@ -782,11 +794,20 @@ export function SwashBooze({ onBack, onError }: Props) {
             ))}
           </div>
 
-          {/* Scatter counter — show while rolling too so player sees the build-up */}
-          {phase !== "fs" && scatterCount > 0 && scatterCount < SWASH_SCATTERS_TO_TRIGGER && (
-            <div className="swash-scatter-counter">
-              {scatterCount}/{SWASH_SCATTERS_TO_TRIGGER}
-            </div>
+          {/* Scatter counter — visible both in base (building toward FS
+              trigger at 4+) and in FS (building toward retrigger at 3+). */}
+          {scatterCount > 0 && (
+            phase === "fs"
+              ? scatterCount > 0 && scatterCount < SWASH_FS_RETRIGGER_SCATTERS && (
+                <div className="swash-scatter-counter">
+                  {scatterCount}/{SWASH_FS_RETRIGGER_SCATTERS}
+                </div>
+              )
+              : scatterCount < SWASH_SCATTERS_TO_TRIGGER && (
+                <div className="swash-scatter-counter">
+                  {scatterCount}/{SWASH_SCATTERS_TO_TRIGGER}
+                </div>
+              )
           )}
 
           {/* FS intro — dark purple polka-dot panel with splat-framed number */}
