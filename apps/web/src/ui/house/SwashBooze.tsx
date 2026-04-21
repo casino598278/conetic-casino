@@ -107,13 +107,6 @@ export function SwashBooze({ onBack, onError }: Props) {
   // final settle, etc). The previous single-ref version could leak if a new
   // RAF was started while an old one was still ticking.
   const rafsRef = useRef<Set<number>>(new Set());
-  const startRaf = (cb: (t: number) => void) => {
-    const id = requestAnimationFrame(function tick(t) {
-      cb(t);
-    });
-    rafsRef.current.add(id);
-    return id;
-  };
   const cancelAllRafs = () => {
     for (const id of rafsRef.current) cancelAnimationFrame(id);
     rafsRef.current.clear();
@@ -226,6 +219,15 @@ export function SwashBooze({ onBack, onError }: Props) {
   };
 
   // ────────────────────────── animation driver ──────────────────────────
+  //
+  // Design: the sequence is built as a flat list of {at, action} pairs, each
+  // scheduled with a single setTimeout. No nested timers, no interdependent
+  // RAFs firing from inside timers. This makes the timeline easy to read,
+  // easy to clearTimers() mid-flight, and impossible to race against itself.
+  //
+  // t0 is always 0 (spin button press). For each frame of the outcome we
+  // compute `at` and push a single action; the driver sorts & schedules at
+  // the end.
 
   const playOutcome = (r: PlayResult) => {
     clearTimers();
@@ -239,10 +241,10 @@ export function SwashBooze({ onBack, onError }: Props) {
     setNiceFlash(null);
     setTumblePill(null);
 
-    // Effective stake for this round — this is what the × multipliers in the
-    // outcome apply to. For a buy that's 100× base; for ante 1.25× base; else
-    // just the base bet. All intermediate popups must use THIS, not baseBet,
-    // otherwise the in-game numbers are 1/100th of the real win on a buy.
+    // Effective stake for this round — what × multipliers in the outcome
+    // apply to. For buy that's 100× bet; for ante 1.25× bet; else 1× bet.
+    // All intermediate popups must use THIS, not baseBet, otherwise the
+    // in-game numbers are 1/100th of the real win on a buy.
     const stakeUsd = usdPerTon != null ? nanoToUsd(BigInt(r.betNano), usdPerTon) : parseFloat(bet) || 0;
     stakeUsdRef.current = stakeUsd;
 
@@ -252,91 +254,84 @@ export function SwashBooze({ onBack, onError }: Props) {
     prevGridRef.current = null;
     prevScatterCountRef.current = 0;
 
+    const scheduled: Array<[number, () => void]> = [];
+    const at = (delay: number, fn: () => void) => scheduled.push([delay, fn]);
+
     let t = 0;
 
-    // Base game — one step per tumble. We also drive the "TUMBLE WIN" pill
-    // that accumulates total USD won across the base cascade chain.
+    // ── BASE GAME ──────────────────────────────────────────────────────
+    // Each step: schedule a renderStep at t, update tumble pill at t+landed.
+    // Losing steps advance in ~370ms, winning steps ~660ms.
     let baseChainUsd = 0;
+    const DROP_LAND_MS = STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS; // ~360ms
     for (const step of r.outcome.baseSteps) {
-      const at = t;
+      const stepStart = t;
+      at(stepStart, () => renderStep(step));
       const stepPayUsd = step.stepMultiplier * stakeUsd;
-      timers.current.push(window.setTimeout(() => renderStep(step), at));
       if (stepPayUsd > 0) {
         baseChainUsd += stepPayUsd;
         const pillUsd = baseChainUsd;
-        timers.current.push(window.setTimeout(() => {
-          setTumblePill({ usd: pillUsd });
-        }, at + STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS));
+        at(stepStart + DROP_LAND_MS, () => setTumblePill({ usd: pillUsd }));
       }
       t += stepDuration(step);
     }
-    // Hide pill at end of base chain.
-    if (baseChainUsd > 0) {
-      timers.current.push(window.setTimeout(() => setTumblePill(null), t));
-    }
+    if (baseChainUsd > 0) at(t, () => setTumblePill(null));
 
-    // Base-round win popup (only if base actually paid and there's no FS to steal thunder).
-    const baseUsdWon =
-      (r.outcome.baseClusterMult + r.outcome.baseScatterMult) * stakeUsd;
+    // Base-round popup: only if base paid AND no FS follows (FS has its own).
+    const baseUsdWon = (r.outcome.baseClusterMult + r.outcome.baseScatterMult) * stakeUsd;
     if (baseUsdWon > 0 && !r.outcome.freeSpins.triggered) {
       const popAt = t;
-      timers.current.push(window.setTimeout(() => {
-        setSpinWinFlash({ usd: baseUsdWon, kind: "tumble" });
-        haptic("light");
-      }, popAt));
-      timers.current.push(window.setTimeout(() => setSpinWinFlash(null), popAt + SPIN_WIN_FLASH_MS));
+      at(popAt, () => setSpinWinFlash({ usd: baseUsdWon, kind: "tumble" }));
+      at(popAt + SPIN_WIN_FLASH_MS, () => setSpinWinFlash(null));
       t += SPIN_WIN_FLASH_MS;
 
-      // NICE! celebration — mid-tier feel-good (5×–<10× bet, no big-win coming).
-      const willCelebrate = r.multiplier >= 10; // BIG or higher handles its own banner
+      // NICE! celebration — feel-good mid tier (5×–<10× bet, no big-win next).
+      const willCelebrate = r.multiplier >= 10;
       if (!willCelebrate && baseUsdWon >= 5 * stakeUsd) {
         const niceAt = t;
-        timers.current.push(window.setTimeout(() => {
-          setNiceFlash({ usd: baseUsdWon });
-          haptic("medium");
-        }, niceAt));
-        timers.current.push(window.setTimeout(() => setNiceFlash(null), niceAt + NICE_FLASH_MS));
+        at(niceAt, () => { setNiceFlash({ usd: baseUsdWon }); haptic("medium"); });
+        at(niceAt + NICE_FLASH_MS, () => setNiceFlash(null));
         t += NICE_FLASH_MS;
       }
     }
 
-    // Free spins
+    // ── FREE SPINS ─────────────────────────────────────────────────────
     if (r.outcome.freeSpins.triggered) {
-      const fsIntroAt = t;
-      timers.current.push(window.setTimeout(() => {
+      const introAt = t;
+      at(introAt, () => {
         setPhase("fs");
         setShowFsIntro(true);
-        // Start the counter at the INITIAL award — retriggers reveal live.
         setFsMeta({ spinsTotal: SWASH_FREE_SPINS, spinIdx: 0, fsMult: 0, stakeUsd });
         haptic("medium");
         snd("fs-trigger");
-      }, fsIntroAt));
-      timers.current.push(window.setTimeout(() => setShowFsIntro(false), fsIntroAt + FS_INTRO_MS - 200));
+      });
+      at(introAt + FS_INTRO_MS - 200, () => setShowFsIntro(false));
       t += FS_INTRO_MS;
 
       let runningMult = 0;
       for (let si = 0; si < r.outcome.freeSpins.spins.length; si++) {
         const fsSpin = r.outcome.freeSpins.spins[si]!;
-        // Tumble-win pill accumulates THIS spin's cluster USD as cascades run.
-        let spinChainUsd = 0;
         const bombMult = Math.max(1, fsSpin.spinMultTotal);
+        let spinChainUsd = 0;
+
+        // Render each cascade step of this FS spin.
         for (const step of fsSpin.steps) {
-          const at = t;
+          const stepStart = t;
+          at(stepStart, () => renderStep(step));
           const stepPayUsd = step.stepMultiplier * stakeUsd;
-          timers.current.push(window.setTimeout(() => renderStep(step), at));
           if (stepPayUsd > 0) {
             spinChainUsd += stepPayUsd;
             const pillUsd = spinChainUsd;
-            timers.current.push(window.setTimeout(() => {
-              setTumblePill({ usd: pillUsd, multiplier: bombMult > 1 ? bombMult : undefined });
-            }, at + STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS));
+            at(stepStart + DROP_LAND_MS, () => setTumblePill({
+              usd: pillUsd,
+              multiplier: bombMult > 1 ? bombMult : undefined,
+            }));
           }
           t += stepDuration(step);
         }
-        // Hide pill between spins.
-        timers.current.push(window.setTimeout(() => setTumblePill(null), t));
-        // End of this spin: pop a per-spin win flash + count the FS total up
-        // from its prior value to its new value.
+        at(t, () => setTumblePill(null));
+
+        // End of spin: flash "+$X.XX" popup if win, count-up FS total.
         const spinWinUsd = fsSpin.spinWin * stakeUsd;
         const prevRunning = runningMult;
         runningMult += fsSpin.spinWin;
@@ -344,97 +339,72 @@ export function SwashBooze({ onBack, onError }: Props) {
         const isRetrigger = fsSpin.initialScatters >= SWASH_FS_RETRIGGER_SCATTERS;
 
         if (spinWinUsd > 0) {
+          const popAt = t;
           const startMult = prevRunning;
           const endMult = runningMult;
-          const rafStartAt = t;
-          timers.current.push(window.setTimeout(() => {
+          at(popAt, () => {
             setSpinWinFlash({ usd: spinWinUsd, kind: "spin" });
             haptic("light");
-            // Cancel any previous count-up so two tickers can't race.
-            cancelAllRafs();
-            // Tick the FS running total from startMult → endMult.
-            const started = performance.now();
-            const tick = (now: number) => {
-              const p = Math.min(1, (now - started) / SPIN_WIN_FLASH_MS);
-              const eased = 1 - Math.pow(1 - p, 3);
-              const cur = startMult + (endMult - startMult) * eased;
-              setFsMeta((prev) => prev ? { ...prev, fsMult: cur } : prev);
-              if (p < 1) {
-                const nextId = requestAnimationFrame(tick);
-                rafsRef.current.add(nextId);
-              }
-            };
-            const id = requestAnimationFrame(tick);
-            rafsRef.current.add(id);
-          }, rafStartAt));
-          timers.current.push(window.setTimeout(() => setSpinWinFlash(null), rafStartAt + SPIN_WIN_FLASH_MS));
+            startFsCountUp(startMult, endMult);
+          });
+          at(popAt + SPIN_WIN_FLASH_MS, () => setSpinWinFlash(null));
           t += SPIN_WIN_FLASH_MS;
         } else {
-          // Even losing spins should lock the counter at its true value.
-          timers.current.push(window.setTimeout(() => {
-            setFsMeta((prev) => prev ? { ...prev, fsMult: runningMult } : prev);
-          }, t));
+          // Lock counter to true value even on losing spins.
+          at(t, () => setFsMeta((prev) => prev ? { ...prev, fsMult: runningMult } : prev));
         }
 
-        // Retrigger banner + bump spinsTotal by +5 AFTER this spin lands.
-        // We only pause briefly so the player can register the bump — the
-        // banner itself fades over RETRIGGER_FLASH_MS but we advance the
-        // timeline by a much shorter beat, letting the flash overlap with
-        // the NEXT spin's drop instead of blocking it.
+        // Retrigger banner (overlays, doesn't block long).
         if (isRetrigger) {
-          timers.current.push(window.setTimeout(() => {
+          const retrigAt = t;
+          at(retrigAt, () => {
             setRetriggerFlash(true);
             haptic("medium");
             setFsMeta((prev) => prev ? { ...prev, spinsTotal: prev.spinsTotal + SWASH_FS_RETRIGGER_AWARD } : prev);
-          }, t));
-          timers.current.push(window.setTimeout(() => setRetriggerFlash(false), t + RETRIGGER_FLASH_MS));
-          t += 400; // short beat, not the full 1200ms banner dwell
+          });
+          at(retrigAt + RETRIGGER_FLASH_MS, () => setRetriggerFlash(false));
+          t += 400; // short beat — banner overlaps next spin's drop
         }
 
-        // Tick the spin index (the "spins left" counter).
-        timers.current.push(window.setTimeout(() => {
-          setFsMeta((prev) => prev ? { ...prev, spinIdx: idx } : prev);
-        }, t));
+        // Advance spin index.
+        at(t, () => setFsMeta((prev) => prev ? { ...prev, spinIdx: idx } : prev));
         t += FS_BETWEEN_MS;
       }
 
-      // FS outro
+      // FS outro.
       const outroAt = t;
-      timers.current.push(window.setTimeout(() => {
+      at(outroAt, () => {
         setShowFsOutro({ totalMult: r.outcome.freeSpins.fsMultiplier, stakeUsd });
         haptic("heavy");
-      }, outroAt));
-      timers.current.push(window.setTimeout(() => setShowFsOutro(null), outroAt + FS_OUTRO_MS - 200));
+      });
+      at(outroAt + FS_OUTRO_MS - 200, () => setShowFsOutro(null));
       t += FS_OUTRO_MS;
     }
 
-    // Big / Super / Mega Win celebration
+    // ── BIG WIN CELEBRATION ────────────────────────────────────────────
     const tier = bigWinTier(r.multiplier);
     if (tier) {
       const bwAt = t;
-      timers.current.push(window.setTimeout(() => {
+      at(bwAt, () => {
         setPhase("big-win");
         setBigWin({ tier, multiplier: r.multiplier, stakeUsd });
         haptic("heavy");
         snd("bigwin");
-      }, bwAt));
-      timers.current.push(window.setTimeout(() => {
+      });
+      at(bwAt + BIG_WIN_MS, () => {
         setBigWin(null);
         setPhase("idle");
-      }, bwAt + BIG_WIN_MS));
+      });
       t += BIG_WIN_MS;
     }
 
-    // Final settle
-    const finalAt = t;
-    timers.current.push(window.setTimeout(() => {
+    // ── FINAL SETTLE ───────────────────────────────────────────────────
+    at(t, () => {
       setRolling(false);
       setWinCells(new Set());
       setScatterCount(0);
       setPhase("idle");
       setFsMeta(null);
-      // Clear bombs — they're FS-only. If FS just ended, the last step's
-      // bombs would otherwise sit in the idle grid until the next spin.
       setBombs([]);
       setTumblePill(null);
       if (r.multiplier > 0 && usdPerTon != null) {
@@ -443,7 +413,32 @@ export function SwashBooze({ onBack, onError }: Props) {
       } else {
         setWinCounterUsd(null);
       }
-    }, finalAt));
+    });
+
+    // Flush all scheduled actions into real setTimeout calls.
+    for (const [delay, fn] of scheduled) {
+      timers.current.push(window.setTimeout(fn, delay));
+    }
+  };
+
+  // Count the FS running-total pill from startMult → endMult over one
+  // SPIN_WIN_FLASH_MS window. Cancels any in-flight count-up first so we
+  // can't race two tickers.
+  const startFsCountUp = (startMult: number, endMult: number) => {
+    cancelAllRafs();
+    const started = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - started) / SPIN_WIN_FLASH_MS);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const cur = startMult + (endMult - startMult) * eased;
+      setFsMeta((prev) => prev ? { ...prev, fsMult: cur } : prev);
+      if (p < 1) {
+        const nextId = requestAnimationFrame(tick);
+        rafsRef.current.add(nextId);
+      }
+    };
+    const id = requestAnimationFrame(tick);
+    rafsRef.current.add(id);
   };
 
   const renderStep = (step: SwashSpinStep) => {
@@ -570,14 +565,16 @@ export function SwashBooze({ onBack, onError }: Props) {
         <div className="swash-cloud swash-cloud-2" aria-hidden />
         <div className="swash-cloud swash-cloud-3" aria-hidden />
 
-        {/* Single top banner slot — marquee while idle, "symbols pay
-            anywhere" while spinning. Mutually exclusive so they can't
-            overlap or fight for z-index. Hidden during FS and overlays. */}
-        {phase !== "fs" && !anyOverlay && (
-          !rolling
-            ? <div className="swash-marquee">WIN OVER 21,100× BET</div>
-            : <div className="swash-top-banner">★ SYMBOLS PAY ANYWHERE ON THE SCREEN ★</div>
-        )}
+        {/* Top banner slot: in-flow, fixed height, mutually exclusive
+            content. Never overlaps the grid because it sits above it in
+            the flex column. */}
+        <div className="swash-top-banner-slot" aria-hidden>
+          {phase !== "fs" && !anyOverlay && (
+            !rolling
+              ? <div className="swash-marquee">WIN OVER 21,100× BET</div>
+              : <div className="swash-top-banner">★ SYMBOLS PAY ANYWHERE ON THE SCREEN ★</div>
+          )}
+        </div>
 
         {/* Grid area — full width on mobile, centered.
             Stable outer keys (r,c) let React diff the grid without tearing

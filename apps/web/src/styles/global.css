@@ -3218,50 +3218,47 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   white-space: nowrap;
 }
 
-/* "GOOD LUCK!" pulse while spinning */
-.swash-good-luck {
-  position: absolute;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 4px 16px;
-  font-size: 16px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  color: #fff;
-  text-shadow: 0 2px 0 #c0164a, 0 4px 6px rgba(0, 0, 0, 0.4);
-  z-index: 3;
+/* Top banner slot — IN-FLOW (not absolute) so it sits above the grid
+   instead of floating over it. Fixed height prevents grid reflow when
+   swapping between marquee and "symbols pay anywhere" text. */
+.swash-top-banner-slot {
+  width: 100%;
+  max-width: 440px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   pointer-events: none;
-  animation: swash-goodluck-pulse 1000ms ease-in-out infinite;
 }
-@keyframes swash-goodluck-pulse {
-  0%, 100% { transform: translateX(-50%) scale(1);    opacity: 0.92; }
-  50%      { transform: translateX(-50%) scale(1.08); opacity: 1; }
-}
-
-/* Rainbow marquee: "WIN OVER 21,100× BET" */
+.swash-top-banner,
 .swash-marquee {
-  position: absolute;
-  top: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 4px 16px;
-  font-size: 18px;
+  padding: 2px 14px;
   font-weight: 900;
   letter-spacing: 0.04em;
   white-space: nowrap;
+  line-height: 1;
+}
+.swash-top-banner {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: #ff6fa8;
+  text-shadow:
+    -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff,
+    0 2px 4px rgba(0, 0, 0, 0.25);
+}
+.swash-marquee {
+  font-size: 18px;
   background: linear-gradient(90deg, #ff4b7a 0%, #ff9a3c 25%, #ffd54a 50%, #6fe063 75%, #4cb8ff 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   filter: drop-shadow(0 2px 0 #c0164a) drop-shadow(0 3px 6px rgba(0, 0, 0, 0.35));
-  z-index: 3;
-  pointer-events: none;
   animation: swash-marquee-pulse 1800ms ease-in-out infinite;
 }
 @keyframes swash-marquee-pulse {
-  0%, 100% { transform: translateX(-50%) scale(1); }
-  50%      { transform: translateX(-50%) scale(1.06); }
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
 }
 
 /* Merged bet card: BET value + Double Chance toggle in one green candy card */
