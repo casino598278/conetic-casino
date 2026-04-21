@@ -9,6 +9,8 @@ import {
   SWASH_SCATTERS_TO_TRIGGER,
   SWASH_FS_RETRIGGER_SCATTERS,
   SWASH_FS_RETRIGGER_AWARD,
+  SWASH_BASE_CLUSTER_SCALE,
+  SWASH_FS_CLUSTER_SCALE,
   type SwashSymbol,
   type SwashSpinStep,
   type SwashOutcome,
@@ -133,6 +135,10 @@ export function SwashBooze({ onBack, onError }: Props) {
   // Effective stake for the CURRENT round in USD. Set in playOutcome(); read
   // in renderStep() so the per-cluster "PAYS $X" subline shows the true win.
   const stakeUsdRef = useRef<number>(0);
+  // Current scale factor to apply to raw paytable multipliers when computing
+  // UI-displayed USD. Swaps between SWASH_BASE_CLUSTER_SCALE and SWASH_FS_CLUSTER_SCALE
+  // depending on whether we're in the base or FS phase of the round.
+  const currentScaleRef = useRef<number>(1);
   // Per-cell "generation" counter. Each cell has its own counter; we bump it
   // ONLY when the symbol at that position actually changes. React keys on
   // this generation so unchanged cells don't remount (keeping the memoized
@@ -291,8 +297,13 @@ export function SwashBooze({ onBack, onError }: Props) {
     const DROP_LAND_MS = STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS; // ~360ms
     for (const step of r.outcome.baseSteps) {
       const stepStart = t;
-      at(stepStart, () => renderStep(step));
-      const stepPayUsd = step.stepMultiplier * stakeUsd;
+      // Phase ref is set BEFORE renderStep so the cluster popups use the
+      // correct scale.
+      at(stepStart, () => {
+        currentScaleRef.current = SWASH_BASE_CLUSTER_SCALE;
+        renderStep(step);
+      });
+      const stepPayUsd = step.stepMultiplier * stakeUsd * SWASH_BASE_CLUSTER_SCALE;
       if (stepPayUsd > 0) {
         baseChainUsd += stepPayUsd;
         const pillUsd = baseChainUsd;
@@ -353,8 +364,11 @@ export function SwashBooze({ onBack, onError }: Props) {
         // Render each cascade step of this FS spin.
         for (const step of fsSpin.steps) {
           const stepStart = t;
-          at(stepStart, () => renderStep(step));
-          const stepPayUsd = step.stepMultiplier * stakeUsd;
+          at(stepStart, () => {
+            currentScaleRef.current = SWASH_FS_CLUSTER_SCALE;
+            renderStep(step);
+          });
+          const stepPayUsd = step.stepMultiplier * stakeUsd * SWASH_FS_CLUSTER_SCALE;
           if (stepPayUsd > 0) {
             spinChainUsd += stepPayUsd;
             const pillUsd = spinChainUsd;
@@ -523,7 +537,8 @@ export function SwashBooze({ onBack, onError }: Props) {
     prevScatterCountRef.current = step.scatterCount;
 
     // Spawn per-cluster floating +$X popups inside the grid AND update the
-    // live WIN counter below the grid with a count-up.
+    // live WIN counter below the grid with a count-up. Scale is read from
+    // currentScaleRef so base vs FS scales correctly.
     if (step.winningCells.length > 0 && step.stepMultiplier > 0) {
       const byCluster = new Map<SwashSymbol, { cells: { row: number; col: number }[]; count: number }>();
       for (const c of step.winningCells) {
@@ -537,11 +552,12 @@ export function SwashBooze({ onBack, onError }: Props) {
         }
       }
       const stake = stakeUsdRef.current;
+      const scale = currentScaleRef.current;
       const popups: Array<{ id: number; row: number; col: number; usd: number }> = [];
       let biggestCluster: { symbol: SwashSymbol; count: number; payUsd: number } | null = null;
       let stepTotal = 0;
       for (const [sym, data] of byCluster) {
-        const pay = paytableClient(sym, data.count) * stake;
+        const pay = paytableClient(sym, data.count) * stake * scale;
         if (pay <= 0) continue;
         stepTotal += pay;
         if (!biggestCluster || data.count > biggestCluster.count) {
@@ -557,11 +573,18 @@ export function SwashBooze({ onBack, onError }: Props) {
           usd: pay,
         });
       }
-      if (popups.length > 0) setClusterPopups(popups);
-      if (biggestCluster) setWinBreakdown(biggestCluster);
+      // Delay popups + count-up until AFTER the drop animation lands, so the
+      // player sees symbols land THEN the reveal, not the numbers first.
+      const revealDelay = STAGGER_MS * (SWASH_GRID_W - 1) + DROP_DUR_MS + 40;
+      if (popups.length > 0) {
+        timers.current.push(window.setTimeout(() => setClusterPopups(popups), revealDelay));
+      }
+      if (biggestCluster) {
+        const bc = biggestCluster;
+        timers.current.push(window.setTimeout(() => setWinBreakdown(bc), revealDelay));
+      }
       if (stepTotal > 0) {
-        // Live count-up: tick WIN counter from its current value upward by stepTotal.
-        startWinCountUp(stepTotal);
+        timers.current.push(window.setTimeout(() => startWinCountUp(stepTotal), revealDelay));
       }
     } else {
       setClusterPopups([]);
