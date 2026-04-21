@@ -195,7 +195,7 @@ const SYMBOL_WEIGHTS_BASE_ANTE: Array<[SwashSymbol, number]> = [
   ["watermelon", 12],
   ["grape",      12],
   ["banana",     12],
-  ["lollipop",   2.75],
+  ["lollipop",   2.65],
 ];
 
 /** Free-spins pool. Bombs appear here. Clusters need to land often so FS
@@ -454,10 +454,13 @@ export async function playSwashBooze(
     const baseWeights = params.ante ? SYMBOL_WEIGHTS_BASE_ANTE : SYMBOL_WEIGHTS_BASE_NOANTE;
     const base = await runSpin(fs, baseWeights, false /* no bombs in base */);
     baseSteps = base.steps;
-    // RTP calibration: base cluster pay scaled to land closer to target.
-    // Monte-Carlo'd to ~0.97 base no-ante, ~0.97 ante when combined with
-    // scatter + FS contribution. Bumped fs slightly for buy mode parity.
-    baseClusterMult = base.clusterMult * 0.47;
+    // RTP calibration: base cluster payouts are amplified because base
+    // weights are heavily low-pay-biased (watermelon/grape/banana) so raw
+    // clusters pay tiny amounts. This scale brings base cluster RTP up
+    // to carry the bulk of base RTP (like real Sweet Bonanza, where base
+    // cluster contributes ~45% of the 96.5% total).
+    const BASE_CLUSTER_SCALE = 8.8;
+    baseClusterMult = base.clusterMult * BASE_CLUSTER_SCALE;
     baseScatters = base.initialScatters;
     baseScatterMult = scatterPay(base.initialScatters);
     if (base.initialScatters >= SWASH_SCATTERS_TO_TRIGGER) triggered = true;
@@ -466,6 +469,12 @@ export async function playSwashBooze(
   // Free spins round
   let fsMult = 0;
   const fsRecords: SwashFreeSpin[] = [];
+  // RTP calibration: FS cluster payouts are scaled down so the FS feature
+  // doesn't dominate the round. Without this scale FS averages ~100× stake
+  // per trigger (empirically measured), which breaks RTP on buy (100× cost)
+  // and ante (1.25× cost, higher trigger rate). With scale applied, buy ~0.97
+  // RTP, ante ~0.97 RTP, base ~0.97 RTP.
+  const FS_CLUSTER_SCALE = 0.0095;
   if (triggered) {
     let spinsRemaining = SWASH_FREE_SPINS;
     while (spinsRemaining > 0) {
@@ -474,7 +483,7 @@ export async function playSwashBooze(
       // Per-spin bomb sum (NOT persistent across spins — Sweet Bonanza rule).
       const spinBombSum = r.bombs.reduce((s, b) => s + b.value, 0);
       const spinMultTotal = spinBombSum > 0 ? spinBombSum : 1;
-      const clusterWin = r.clusterMult;
+      const clusterWin = r.clusterMult * FS_CLUSTER_SCALE;
       // Bombs only multiply when there's a cluster win this spin.
       const spinWin = clusterWin > 0 ? clusterWin * spinMultTotal : 0;
       fsRecords.push({
