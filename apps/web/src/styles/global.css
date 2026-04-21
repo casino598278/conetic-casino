@@ -2473,9 +2473,10 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   gap: 4px;
   width: 100%;
   position: relative; /* anchor for absolute children like .swash-cluster-popup */
-  /* Constrain paint/layout work to the grid so cell animations don't
-     trigger layout in the parent tree. */
-  contain: layout paint;
+  /* Note: contain:paint would clip cluster popups that rise above the grid
+     during their fade. Use contain:layout only so popups can overflow
+     while we still get the layout-isolation win. */
+  contain: layout;
 }
 
 /* Each cell is a square. The inner div actually animates so the outer can

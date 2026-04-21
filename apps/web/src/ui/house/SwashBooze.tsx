@@ -156,6 +156,7 @@ export function SwashBooze({ onBack, onError }: Props) {
     Array.from({ length: SWASH_GRID_H }, () => Array.from({ length: SWASH_GRID_W }, () => 0)),
   );
   const prevGridRef = useRef<SwashSymbol[][] | null>(null);
+  const prevWinCellsRef = useRef<Set<string>>(new Set());
   const prevScatterCountRef = useRef<number>(0);
   const [showBuyModal, setShowBuyModal] = useState(false);
 
@@ -292,6 +293,7 @@ export function SwashBooze({ onBack, onError }: Props) {
     // whose symbol changed (see renderStep).
     prevGridRef.current = null;
     prevScatterCountRef.current = 0;
+    prevWinCellsRef.current = new Set();
 
     const scheduled: Array<[number, () => void]> = [];
     const at = (delay: number, fn: () => void) => scheduled.push([delay, fn]);
@@ -439,14 +441,15 @@ export function SwashBooze({ onBack, onError }: Props) {
         t += FS_BETWEEN_MS;
       }
 
-      // FS outro.
+      // FS outro. We keep the outro modal visible right up to the final
+      // settle so there's no visual gap where the FS remaining counter
+      // briefly re-appears while phase is still "fs".
       const outroAt = t;
       const spinsPlayed = r.outcome.freeSpins.spins.length;
       at(outroAt, () => {
         setShowFsOutro({ totalMult: r.outcome.freeSpins.fsMultiplier, stakeUsd, spinsPlayed });
         haptic("heavy");
       });
-      at(outroAt + FS_OUTRO_MS - 200, () => setShowFsOutro(null));
       t += FS_OUTRO_MS;
     }
 
@@ -477,7 +480,11 @@ export function SwashBooze({ onBack, onError }: Props) {
       setBombs([]);
       setTumblePill(null);
       setClusterPopups([]);
+      setShowFsOutro(null);
       // Hide the live WIN readout; the final settle counter takes over.
+      // Cancel the live/fs-meta RAFs so they don't tick past zero.
+      if (liveWinRafRef.current != null) { cancelAnimationFrame(liveWinRafRef.current); liveWinRafRef.current = null; }
+      if (fsMetaRafRef.current != null) { cancelAnimationFrame(fsMetaRafRef.current); fsMetaRafRef.current = null; }
       setLiveWinUsd(0);
       liveWinUsdRef.current = 0;
       winCountTargetRef.current = 0;
@@ -515,23 +522,32 @@ export function SwashBooze({ onBack, onError }: Props) {
   };
 
   const renderStep = (step: SwashSpinStep) => {
-    // Bump per-cell generation only for cells whose SYMBOL changed between
-    // the previous grid and this one. This way unchanged cells keep the
-    // same React key (no remount, no SVG re-parse) while new arrivals get
-    // a fresh key and replay the drop keyframe.
+    // Bump per-cell generation if either:
+    //   (a) the symbol at that position changed between steps, OR
+    //   (b) this cell was a "winning" cell in the previous step (so its
+    //       win-pulse ended at scale:0/opacity:0 and we need a fresh drop
+    //       to replay — even if by coincidence the same symbol type
+    //       landed there again, we must remount to restart the animation).
     const prev = prevGridRef.current;
     const gen = cellGenRef.current;
+    const prevWinCells = prevWinCellsRef.current;
     for (let r = 0; r < SWASH_GRID_H; r++) {
       const prevRow = prev?.[r];
       const curRow = step.grid[r]!;
       const genRow = gen[r]!;
       for (let c = 0; c < SWASH_GRID_W; c++) {
-        if (!prevRow || prevRow[c] !== curRow[c]) {
+        const posKey = `${r},${c}`;
+        const wasWin = prevWinCells.has(posKey);
+        if (!prevRow || prevRow[c] !== curRow[c] || wasWin) {
           genRow[c]!++;
         }
       }
     }
     prevGridRef.current = step.grid;
+    // Remember THIS step's winning cells for the next step's gen-bump.
+    const thisWins = new Set<string>();
+    for (const c of step.winningCells) thisWins.add(`${c.row},${c.col}`);
+    prevWinCellsRef.current = thisWins;
 
     setGrid(step.grid);
     setBombs(step.bombs);
@@ -976,7 +992,7 @@ export function SwashBooze({ onBack, onError }: Props) {
 
           <button
             type="button"
-            className={`swash-spin-btn ${busy || rolling ? "is-spinning" : ""}`}
+            className={`swash-spin-btn ${busy ? "is-spinning" : ""}`}
             onClick={onSpin}
             disabled={busy || rolling}
             aria-label="Spin"
