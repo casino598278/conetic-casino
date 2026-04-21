@@ -18,6 +18,7 @@ import { haptic, notify } from "../../telegram/initWebApp";
 import { useWalletStore } from "../../state/walletStore";
 import { usePriceStore, usdToNano, nanoToUsd, fmtUsd } from "../../state/priceStore";
 import { SwashSymbolIcon, SwashBombIcon } from "./swashSymbols";
+import { playSwashSound, unlockAudio } from "./swashAudio";
 
 // ────────────────────────── helpers ──────────────────────────
 
@@ -78,6 +79,9 @@ export function SwashBooze({ onBack, onError }: Props) {
   const [bet, setBet] = useState("1");
   const [ante, setAnte] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
+  const soundOnRef = useRef(soundOn);
+  soundOnRef.current = soundOn;
+  const snd = (kind: Parameters<typeof playSwashSound>[0]) => playSwashSound(kind, soundOnRef.current);
 
   const [busy, setBusy] = useState(false);
   const [rolling, setRolling] = useState(false);
@@ -99,8 +103,6 @@ export function SwashBooze({ onBack, onError }: Props) {
   const [retriggerFlash, setRetriggerFlash] = useState(false);
   // Tumble-win pill: purple banner above grid showing running tumble total.
   const [tumblePill, setTumblePill] = useState<null | { usd: number; multiplier?: number }>(null);
-  // Last-step cluster breakdown for "9× 🍌 PAYS $0.75" sub-readout.
-  const [lastCluster, setLastCluster] = useState<null | { symbol: SwashSymbol; count: number; payUsd: number }>(null);
   // Track ALL outstanding RAFs (count-up for FS running total, count-up for
   // final settle, etc). The previous single-ref version could leak if a new
   // RAF was started while an old one was still ticking.
@@ -128,6 +130,7 @@ export function SwashBooze({ onBack, onError }: Props) {
     Array.from({ length: SWASH_GRID_H }, () => Array.from({ length: SWASH_GRID_W }, () => 0)),
   );
   const prevGridRef = useRef<SwashSymbol[][] | null>(null);
+  const prevScatterCountRef = useRef<number>(0);
   const [showBuyModal, setShowBuyModal] = useState(false);
 
   const timers = useRef<number[]>([]);
@@ -171,7 +174,8 @@ export function SwashBooze({ onBack, onError }: Props) {
     // Clear the previous round's lingering win counter so the new spin
     // starts visually clean even while the server call is in flight.
     setWinCounterUsd(null);
-    setLastCluster(null);
+    unlockAudio();
+    snd("spin");
     haptic("light");
     try {
       const r = await callServer("spin");
@@ -189,7 +193,8 @@ export function SwashBooze({ onBack, onError }: Props) {
     if (busy || rolling || usdPerTon == null) return;
     setBusy(true);
     setWinCounterUsd(null);
-    setLastCluster(null);
+    unlockAudio();
+    snd("spin");
     haptic("medium");
     try {
       const r = await callServer("buy");
@@ -233,7 +238,6 @@ export function SwashBooze({ onBack, onError }: Props) {
     setRetriggerFlash(false);
     setNiceFlash(null);
     setTumblePill(null);
-    setLastCluster(null);
 
     // Effective stake for this round — this is what the × multipliers in the
     // outcome apply to. For a buy that's 100× base; for ante 1.25× base; else
@@ -241,6 +245,12 @@ export function SwashBooze({ onBack, onError }: Props) {
     // otherwise the in-game numbers are 1/100th of the real win on a buy.
     const stakeUsd = usdPerTon != null ? nanoToUsd(BigInt(r.betNano), usdPerTon) : parseFloat(bet) || 0;
     stakeUsdRef.current = stakeUsd;
+
+    // Force the drop animation to replay on EVERY cell for the initial drop
+    // of a new round. Cascades within the round then only animate cells
+    // whose symbol changed (see renderStep).
+    prevGridRef.current = null;
+    prevScatterCountRef.current = 0;
 
     let t = 0;
 
@@ -299,6 +309,7 @@ export function SwashBooze({ onBack, onError }: Props) {
         // Start the counter at the INITIAL award — retriggers reveal live.
         setFsMeta({ spinsTotal: SWASH_FREE_SPINS, spinIdx: 0, fsMult: 0, stakeUsd });
         haptic("medium");
+        snd("fs-trigger");
       }, fsIntroAt));
       timers.current.push(window.setTimeout(() => setShowFsIntro(false), fsIntroAt + FS_INTRO_MS - 200));
       t += FS_INTRO_MS;
@@ -405,6 +416,7 @@ export function SwashBooze({ onBack, onError }: Props) {
         setPhase("big-win");
         setBigWin({ tier, multiplier: r.multiplier, stakeUsd });
         haptic("heavy");
+        snd("bigwin");
       }, bwAt));
       timers.current.push(window.setTimeout(() => {
         setBigWin(null);
@@ -421,6 +433,10 @@ export function SwashBooze({ onBack, onError }: Props) {
       setScatterCount(0);
       setPhase("idle");
       setFsMeta(null);
+      // Clear bombs — they're FS-only. If FS just ended, the last step's
+      // bombs would otherwise sit in the idle grid until the next spin.
+      setBombs([]);
+      setTumblePill(null);
       if (r.multiplier > 0 && usdPerTon != null) {
         const usd = nanoToUsd(BigInt(r.payoutNano), usdPerTon);
         animateCountUp(usd);
@@ -457,15 +473,17 @@ export function SwashBooze({ onBack, onError }: Props) {
     setWinCells(ws);
     // Bump stepCounter so React re-renders the grid (cellGen is a ref, not state).
     setStepCounter((n) => n + 1);
-    if (step.winningCells.length > 0) haptic("light");
-    // Track biggest cluster for the "9× 🍌 PAYS $0.75" sub-readout.
-    if (step.winSymbol && step.winCount > 0) {
-      setLastCluster({
-        symbol: step.winSymbol,
-        count: step.winCount,
-        payUsd: step.stepMultiplier * stakeUsdRef.current,
-      });
+    // Soft drop thud for every new grid (every step).
+    snd("drop");
+    if (step.winningCells.length > 0) {
+      // Haptic only fires on CLUSTER wins — drops alone don't buzz the device.
+      haptic("light");
+      snd("win");
     }
+    if (step.bombs.length > 0) snd("bomb");
+    // Scatter ding — only when count increases (new scatter landed).
+    if (step.scatterCount > prevScatterCountRef.current) snd("scatter");
+    prevScatterCountRef.current = step.scatterCount;
   };
 
   const animateCountUp = (targetUsd: number) => {
@@ -509,10 +527,12 @@ export function SwashBooze({ onBack, onError }: Props) {
   const decBet = () => {
     const idx = currentStep <= 0 ? 0 : currentStep - 1;
     setBet(BET_STEPS[idx]!.toFixed(2));
+    snd("click");
   };
   const incBet = () => {
     const idx = currentStep < 0 ? BET_STEPS.length - 1 : Math.min(currentStep + 1, BET_STEPS.length - 1);
     setBet(BET_STEPS[idx]!.toFixed(2));
+    snd("click");
   };
 
   // ────────────────────────── render ──────────────────────────
@@ -530,7 +550,14 @@ export function SwashBooze({ onBack, onError }: Props) {
         <button
           type="button"
           className="swash-head-sound"
-          onClick={() => setSoundOn((s) => !s)}
+          onClick={() => {
+            unlockAudio();
+            setSoundOn((s) => {
+              const next = !s;
+              if (next) playSwashSound("click", true);
+              return next;
+            });
+          }}
           aria-label={soundOn ? "Mute" : "Unmute"}
         >
           {soundOn ? "🔊" : "🔇"}
@@ -543,19 +570,13 @@ export function SwashBooze({ onBack, onError }: Props) {
         <div className="swash-cloud swash-cloud-2" aria-hidden />
         <div className="swash-cloud swash-cloud-3" aria-hidden />
 
-        {/* Marketing marquee — idle, no overlay, no spin in flight */}
-        {!rolling && phase === "idle" && !anyOverlay && (
-          <div className="swash-marquee">WIN OVER 21,100× BET</div>
-        )}
-
-        {/* "Symbols pay anywhere" top banner — always visible outside FS/overlays */}
+        {/* Single top banner slot — marquee while idle, "symbols pay
+            anywhere" while spinning. Mutually exclusive so they can't
+            overlap or fight for z-index. Hidden during FS and overlays. */}
         {phase !== "fs" && !anyOverlay && (
-          <div className="swash-top-banner">★ SYMBOLS PAY ANYWHERE ON THE SCREEN ★</div>
-        )}
-
-        {/* "GOOD LUCK!" pulse during the initial drop of an active spin */}
-        {rolling && phase === "idle" && !anyOverlay && !tumblePill && winCounterUsd == null && !spinWinFlash && (
-          <div className="swash-good-luck">GOOD LUCK!</div>
+          !rolling
+            ? <div className="swash-marquee">WIN OVER 21,100× BET</div>
+            : <div className="swash-top-banner">★ SYMBOLS PAY ANYWHERE ON THE SCREEN ★</div>
         )}
 
         {/* Grid area — full width on mobile, centered.
@@ -643,16 +664,11 @@ export function SwashBooze({ onBack, onError }: Props) {
             </div>
           )}
 
-          {/* Settle win counter */}
+          {/* Settle win counter — just the total. Per-cluster breakdown was
+              dropped because it mixed raw paytable multipliers with stake
+              and looked wrong on FS rounds. */}
           {winCounterUsd != null && phase === "idle" && !bigWin && (
-            <div className="swash-win-counter">
-              <div className="swash-win-counter-main">WIN {fmtUsd(winCounterUsd)}</div>
-              {lastCluster && (
-                <div className="swash-win-breakdown">
-                  {lastCluster.count}× <span className="swash-win-breakdown-sym"><SwashSymbolIcon symbol={lastCluster.symbol} /></span> PAYS {fmtUsd(lastCluster.payUsd)}
-                </div>
-              )}
-            </div>
+            <div className="swash-win-counter">WIN {fmtUsd(winCounterUsd)}</div>
           )}
 
           {/* FREE SPINS LEFT N sub-readout during FS (hide once all spins are consumed so we don't show "LEFT 0") */}
@@ -698,6 +714,8 @@ export function SwashBooze({ onBack, onError }: Props) {
             onClick={() => {
               if (ante) { onError?.("Turn off Double Chance to buy"); return; }
               if (busy || rolling) return;
+              unlockAudio();
+              snd("click");
               setShowBuyModal(true);
             }}
             disabled={busy || rolling}
@@ -715,7 +733,7 @@ export function SwashBooze({ onBack, onError }: Props) {
             <button
               type="button"
               className="swash-bet-card-ante"
-              onClick={() => setAnte((a) => !a)}
+              onClick={() => { setAnte((a) => !a); snd("click"); }}
               disabled={busy || rolling}
               aria-pressed={ante}
             >

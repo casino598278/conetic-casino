@@ -2632,12 +2632,13 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 .swash-fs-intro-splat::before { top: -6px; left: 20%; width: 14px; height: 14px; }
 .swash-fs-intro-splat::after { bottom: -6px; right: 20%; width: 10px; height: 10px; }
 .swash-fs-intro-big {
-  font-size: 72px;
+  font-size: clamp(40px, 14vw, 72px);
   font-weight: 900;
   line-height: 1;
   color: #ffd54a;
   text-shadow: 0 0 12px rgba(255, 213, 74, 0.8), 0 4px 0 #8a5a00, 0 6px 8px rgba(0, 0, 0, 0.4);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .swash-fs-intro-bottom {
   font-size: 18px;
@@ -2706,12 +2707,13 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35), 0 5px 6px rgba(0, 0, 0, 0.3);
 }
 .swash-big-win-amount {
-  font-size: 48px;
+  font-size: clamp(28px, 9vw, 48px);
   font-weight: 900;
   line-height: 1;
   margin-top: 10px;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 4px 0 rgba(0, 0, 0, 0.35), 0 6px 10px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
 }
 
 /* Per-spin / per-tumble "+$X.XX" floating win — shows after each cluster */
@@ -2774,53 +2776,36 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   100% { opacity: 0; transform: translate(-50%, -55%) scale(.95); }
 }
 
-/* Post-settle win pill (now contains main + breakdown) */
+/* Post-settle win pill */
 .swash-win-counter {
   position: absolute;
   bottom: 14px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 6px 18px;
-  background: rgba(30, 10, 50, 0.88);
+  padding: 6px 22px;
+  background: rgba(30, 10, 50, 0.9);
   border: 2px solid #ffd54a;
-  color: #fff;
+  color: #ffd54a;
+  font-size: clamp(16px, 5vw, 22px);
   font-weight: 900;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
   border-radius: 14px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), 0 0 20px rgba(255, 213, 74, 0.3);
   z-index: 4;
   text-align: center;
+  text-shadow: 0 2px 0 #6a3d00, 0 3px 4px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+  max-width: calc(100% - 32px);
+  overflow: hidden;
+  text-overflow: ellipsis;
   animation: swash-pop 300ms var(--ease);
 }
-.swash-win-counter-main {
-  font-size: 20px;
-  color: #ffd54a;
-  text-shadow: 0 2px 0 #6a3d00, 0 3px 4px rgba(0, 0, 0, 0.4);
-  letter-spacing: 0.04em;
-}
-.swash-win-breakdown {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  margin-top: 2px;
-  font-size: 11px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.85);
-  letter-spacing: 0.04em;
-}
-.swash-win-breakdown-sym {
-  display: inline-flex;
-  width: 18px;
-  height: 18px;
-  margin: 0 2px;
-}
-.swash-win-breakdown-sym .swash-sym { width: 100%; height: 100%; display: block; }
 
 /* Feature buttons row — sits between the grid and the HUD */
 .swash-feature-row {
   display: grid;
-  grid-template-columns: 1fr 1.4fr;
+  grid-template-columns: minmax(110px, 1fr) minmax(0, 1.8fr);
   gap: 8px;
   width: 100%;
   max-width: 440px;
@@ -3144,7 +3129,8 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   top: 6px;
   left: 50%;
   transform: translateX(-50%);
-  min-width: 180px;
+  min-width: 160px;
+  max-width: calc(100% - 32px);
   padding: 4px 22px 6px;
   background: linear-gradient(180deg, #7a3dd9, #3f1674);
   border: 3px solid #fff;
@@ -3164,29 +3150,38 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
 }
 .swash-tumble-pill-amount {
-  font-size: 22px;
+  font-size: clamp(16px, 5vw, 22px);
   font-weight: 900;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 3px 6px rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .swash-tumble-pill-mult {
   color: #ffd54a;
   font-size: 16px;
 }
 
-/* FREE SPINS LEFT — sub-readout below grid during FS */
+/* FREE SPINS LEFT — sub-readout below grid during FS.
+   Positioned at the very bottom of the grid-frame so it overlaps the
+   grid edge but stays above the feature row. */
 .swash-fs-remaining {
   position: absolute;
-  bottom: 10px;
+  bottom: 6px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
+  padding: 4px 14px;
+  background: rgba(15, 5, 30, 0.7);
+  border-radius: 10px;
   z-index: 4;
   pointer-events: none;
+  backdrop-filter: blur(2px);
 }
 .swash-fs-remaining-win {
   font-size: 18px;
@@ -3291,21 +3286,21 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4px 12px;
-  min-width: 72px;
+  padding: 2px 10px;
+  min-width: 64px;
   flex-shrink: 0;
 }
 .swash-bet-card-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
 }
 .swash-bet-card-value {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 900;
   line-height: 1;
-  margin-top: 2px;
+  margin-top: 1px;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
 }
@@ -3314,8 +3309,8 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 4px 8px;
+  gap: 6px;
+  padding: 3px 6px;
   background: rgba(0, 0, 0, 0.15);
   border: none;
   border-radius: 10px;
@@ -3333,20 +3328,24 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   align-items: flex-start;
   gap: 0;
   min-width: 0;
+  flex: 1 1 0;
   text-align: left;
+  overflow: hidden;
 }
 .swash-bet-card-ante-title {
   font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   line-height: 1.1;
+  white-space: nowrap;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
 }
 .swash-bet-card-ante-sub {
-  font-size: 9px;
+  font-size: 8.5px;
   font-weight: 700;
   opacity: 0.85;
   line-height: 1.1;
+  white-space: nowrap;
 }
 .swash-bet-card-ante-toggle {
   flex-shrink: 0;
