@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   SWASH_GRID_H,
@@ -101,18 +101,40 @@ export function SwashBooze({ onBack, onError }: Props) {
   const [tumblePill, setTumblePill] = useState<null | { usd: number; multiplier?: number }>(null);
   // Last-step cluster breakdown for "9× 🍌 PAYS $0.75" sub-readout.
   const [lastCluster, setLastCluster] = useState<null | { symbol: SwashSymbol; count: number; payUsd: number }>(null);
-  const countRafRef = useRef<number | null>(null);
+  // Track ALL outstanding RAFs (count-up for FS running total, count-up for
+  // final settle, etc). The previous single-ref version could leak if a new
+  // RAF was started while an old one was still ticking.
+  const rafsRef = useRef<Set<number>>(new Set());
+  const startRaf = (cb: (t: number) => void) => {
+    const id = requestAnimationFrame(function tick(t) {
+      cb(t);
+    });
+    rafsRef.current.add(id);
+    return id;
+  };
+  const cancelAllRafs = () => {
+    for (const id of rafsRef.current) cancelAnimationFrame(id);
+    rafsRef.current.clear();
+  };
   // Effective stake for the CURRENT round in USD. Set in playOutcome(); read
   // in renderStep() so the per-cluster "PAYS $X" subline shows the true win.
   const stakeUsdRef = useRef<number>(0);
+  // Per-cell "generation" counter. Each cell has its own counter; we bump it
+  // ONLY when the symbol at that position actually changes. React keys on
+  // this generation so unchanged cells don't remount (keeping the memoized
+  // SVG and avoiding re-parsing), while fresh symbols get a key flip and
+  // replay the drop keyframe.
+  const cellGenRef = useRef<number[][]>(
+    Array.from({ length: SWASH_GRID_H }, () => Array.from({ length: SWASH_GRID_W }, () => 0)),
+  );
+  const prevGridRef = useRef<SwashSymbol[][] | null>(null);
   const [showBuyModal, setShowBuyModal] = useState(false);
 
   const timers = useRef<number[]>([]);
   const clearTimers = () => {
     for (const t of timers.current) clearTimeout(t);
     timers.current = [];
-    if (countRafRef.current) cancelAnimationFrame(countRafRef.current);
-    countRafRef.current = null;
+    cancelAllRafs();
   };
   useEffect(() => () => clearTimers(), []);
 
@@ -146,6 +168,10 @@ export function SwashBooze({ onBack, onError }: Props) {
   const onSpin = async () => {
     if (busy || rolling || usdPerTon == null) return;
     setBusy(true);
+    // Clear the previous round's lingering win counter so the new spin
+    // starts visually clean even while the server call is in flight.
+    setWinCounterUsd(null);
+    setLastCluster(null);
     haptic("light");
     try {
       const r = await callServer("spin");
@@ -162,6 +188,8 @@ export function SwashBooze({ onBack, onError }: Props) {
     setShowBuyModal(false);
     if (busy || rolling || usdPerTon == null) return;
     setBusy(true);
+    setWinCounterUsd(null);
+    setLastCluster(null);
     haptic("medium");
     try {
       const r = await callServer("buy");
@@ -311,6 +339,8 @@ export function SwashBooze({ onBack, onError }: Props) {
           timers.current.push(window.setTimeout(() => {
             setSpinWinFlash({ usd: spinWinUsd, kind: "spin" });
             haptic("light");
+            // Cancel any previous count-up so two tickers can't race.
+            cancelAllRafs();
             // Tick the FS running total from startMult → endMult.
             const started = performance.now();
             const tick = (now: number) => {
@@ -318,10 +348,13 @@ export function SwashBooze({ onBack, onError }: Props) {
               const eased = 1 - Math.pow(1 - p, 3);
               const cur = startMult + (endMult - startMult) * eased;
               setFsMeta((prev) => prev ? { ...prev, fsMult: cur } : prev);
-              if (p < 1) countRafRef.current = requestAnimationFrame(tick);
-              else countRafRef.current = null;
+              if (p < 1) {
+                const nextId = requestAnimationFrame(tick);
+                rafsRef.current.add(nextId);
+              }
             };
-            countRafRef.current = requestAnimationFrame(tick);
+            const id = requestAnimationFrame(tick);
+            rafsRef.current.add(id);
           }, rafStartAt));
           timers.current.push(window.setTimeout(() => setSpinWinFlash(null), rafStartAt + SPIN_WIN_FLASH_MS));
           t += SPIN_WIN_FLASH_MS;
@@ -333,6 +366,10 @@ export function SwashBooze({ onBack, onError }: Props) {
         }
 
         // Retrigger banner + bump spinsTotal by +5 AFTER this spin lands.
+        // We only pause briefly so the player can register the bump — the
+        // banner itself fades over RETRIGGER_FLASH_MS but we advance the
+        // timeline by a much shorter beat, letting the flash overlap with
+        // the NEXT spin's drop instead of blocking it.
         if (isRetrigger) {
           timers.current.push(window.setTimeout(() => {
             setRetriggerFlash(true);
@@ -340,7 +377,7 @@ export function SwashBooze({ onBack, onError }: Props) {
             setFsMeta((prev) => prev ? { ...prev, spinsTotal: prev.spinsTotal + SWASH_FS_RETRIGGER_AWARD } : prev);
           }, t));
           timers.current.push(window.setTimeout(() => setRetriggerFlash(false), t + RETRIGGER_FLASH_MS));
-          t += RETRIGGER_FLASH_MS;
+          t += 400; // short beat, not the full 1200ms banner dwell
         }
 
         // Tick the spin index (the "spins left" counter).
@@ -394,13 +431,32 @@ export function SwashBooze({ onBack, onError }: Props) {
   };
 
   const renderStep = (step: SwashSpinStep) => {
+    // Bump per-cell generation only for cells whose SYMBOL changed between
+    // the previous grid and this one. This way unchanged cells keep the
+    // same React key (no remount, no SVG re-parse) while new arrivals get
+    // a fresh key and replay the drop keyframe.
+    const prev = prevGridRef.current;
+    const gen = cellGenRef.current;
+    for (let r = 0; r < SWASH_GRID_H; r++) {
+      const prevRow = prev?.[r];
+      const curRow = step.grid[r]!;
+      const genRow = gen[r]!;
+      for (let c = 0; c < SWASH_GRID_W; c++) {
+        if (!prevRow || prevRow[c] !== curRow[c]) {
+          genRow[c]!++;
+        }
+      }
+    }
+    prevGridRef.current = step.grid;
+
     setGrid(step.grid);
     setBombs(step.bombs);
     setScatterCount(step.scatterCount);
     const ws = new Set<string>();
     for (const c of step.winningCells) ws.add(`${c.row},${c.col}`);
     setWinCells(ws);
-    setStepCounter((n) => n + 1); // bump so the cell keys change → React remounts → keyframe re-runs
+    // Bump stepCounter so React re-renders the grid (cellGen is a ref, not state).
+    setStepCounter((n) => n + 1);
     if (step.winningCells.length > 0) haptic("light");
     // Track biggest cluster for the "9× 🍌 PAYS $0.75" sub-readout.
     if (step.winSymbol && step.winCount > 0) {
@@ -413,15 +469,20 @@ export function SwashBooze({ onBack, onError }: Props) {
   };
 
   const animateCountUp = (targetUsd: number) => {
+    // Cancel any in-flight tickers before starting a new one.
+    cancelAllRafs();
     const start = performance.now();
     const step = (t: number) => {
       const p = Math.min(1, (t - start) / COUNTUP_DUR_MS);
       const eased = 1 - Math.pow(1 - p, 3);
       setWinCounterUsd(targetUsd * eased);
-      if (p < 1) countRafRef.current = requestAnimationFrame(step);
-      else countRafRef.current = null;
+      if (p < 1) {
+        const nextId = requestAnimationFrame(step);
+        rafsRef.current.add(nextId);
+      }
     };
-    countRafRef.current = requestAnimationFrame(step);
+    const id = requestAnimationFrame(step);
+    rafsRef.current.add(id);
   };
 
   // ────────────────────────── bet controls ──────────────────────────
@@ -430,6 +491,18 @@ export function SwashBooze({ onBack, onError }: Props) {
   const betUsd = parseFloat(bet) || 0;
   const buyCostUsd = betUsd * SWASH_BONUS_BUY_COST;
   const effectiveBetUsd = betUsd * (ante ? SWASH_ANTE_MULTIPLIER : 1);
+
+  // O(1) bomb lookup by cell position (rebuilt when bombs state changes).
+  const bombsByPos = useMemo(() => {
+    const m = new Map<string, { row: number; col: number; value: number }>();
+    for (const b of bombs) m.set(`${b.row},${b.col}`, b);
+    return m;
+  }, [bombs]);
+
+  // One canonical "is any modal/banner currently covering the grid" flag.
+  // Used to suppress redundant banners instead of repeating the same long
+  // condition in five places.
+  const anyOverlay = !!(bigWin || niceFlash || showFsIntro || showFsOutro);
 
   const BET_STEPS = [0.20, 0.40, 0.80, 1.00, 2.00, 5.00, 10.00, 20.00, 50.00, 100.00];
   const currentStep = BET_STEPS.findIndex((v) => v >= betUsd);
@@ -470,35 +543,44 @@ export function SwashBooze({ onBack, onError }: Props) {
         <div className="swash-cloud swash-cloud-2" aria-hidden />
         <div className="swash-cloud swash-cloud-3" aria-hidden />
 
-        {/* Marketing marquee — shows on idle only (not while spinning, not in FS, not during big-win) */}
-        {!rolling && phase === "idle" && !bigWin && !niceFlash && !showFsIntro && !showFsOutro && (
+        {/* Marketing marquee — idle, no overlay, no spin in flight */}
+        {!rolling && phase === "idle" && !anyOverlay && (
           <div className="swash-marquee">WIN OVER 21,100× BET</div>
         )}
 
-        {/* "Symbols pay anywhere" top banner — always visible outside FS/big-win/modals */}
-        {phase !== "fs" && !bigWin && !niceFlash && !showFsIntro && !showFsOutro && (
+        {/* "Symbols pay anywhere" top banner — always visible outside FS/overlays */}
+        {phase !== "fs" && !anyOverlay && (
           <div className="swash-top-banner">★ SYMBOLS PAY ANYWHERE ON THE SCREEN ★</div>
         )}
 
-        {/* "GOOD LUCK!" pulse while an active spin is rolling before any win resolves */}
-        {rolling && phase === "idle" && !bigWin && !niceFlash && !showFsIntro && !showFsOutro && !tumblePill && winCounterUsd == null && !spinWinFlash && (
+        {/* "GOOD LUCK!" pulse during the initial drop of an active spin */}
+        {rolling && phase === "idle" && !anyOverlay && !tumblePill && winCounterUsd == null && !spinWinFlash && (
           <div className="swash-good-luck">GOOD LUCK!</div>
         )}
 
-        {/* Grid area — full width on mobile, centered */}
+        {/* Grid area — full width on mobile, centered.
+            Stable outer keys (r,c) let React diff the grid without tearing
+            everything down every step — only the inner "animation slot" is
+            keyed to stepCounter so the drop keyframe replays exactly where
+            needed. Memoized SwashSymbolIcon then skips SVG re-render if the
+            symbol and winning-state didn't actually change. */}
         <div className="swash-grid-frame">
           <div className="swash-grid">
             {grid.map((row, r) => row.map((sym, c) => {
-              const key = `${stepCounter}-${r}-${c}`;
-              const isWin = winCells.has(`${r},${c}`);
-              const bomb = bombs.find((b) => b.row === r && b.col === c);
+              const posKey = `${r},${c}`;
+              const isWin = winCells.has(posKey);
+              const bomb = bombsByPos.get(posKey);
+              const innerKey = `${cellGenRef.current[r]![c]}-${posKey}`;
               return (
                 <div
-                  key={key}
+                  key={posKey}
                   className={`swash-cell ${isWin ? "is-win" : ""}`}
-                  style={{ animationDelay: `${c * STAGGER_MS}ms` }}
                 >
-                  <div className="swash-cell-inner">
+                  <div
+                    key={innerKey}
+                    className="swash-cell-inner"
+                    style={{ animationDelay: `${c * STAGGER_MS}ms` }}
+                  >
                     {bomb ? (
                       <SwashBombIcon value={bomb.value} winning={isWin} />
                     ) : (

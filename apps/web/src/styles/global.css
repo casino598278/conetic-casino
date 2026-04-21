@@ -2443,6 +2443,9 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   grid-template-columns: repeat(6, 1fr);
   gap: 4px;
   width: 100%;
+  /* Constrain paint/layout work to the grid so cell animations don't
+     trigger layout in the parent tree. */
+  contain: layout paint;
 }
 
 /* Each cell is a square. The inner div actually animates so the outer can
@@ -2454,6 +2457,8 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   align-items: center;
   justify-content: center;
   overflow: visible;
+  /* Each cell is its own containment boundary so animations don't ripple. */
+  contain: layout paint;
 }
 .swash-cell-inner {
   width: 100%;
@@ -2477,8 +2482,7 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   display: flex;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
-  transition: transform var(--t-xs);
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35));
 }
 .swash-sym { width: 100%; height: 100%; display: block; }
 .swash-sym-wrap.is-winning {

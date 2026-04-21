@@ -3,7 +3,7 @@
    pop off the grid. Sized to fill their cell — viewBox 100x100, callers
    set width/height via CSS on the parent. */
 
-import type { JSX } from "react";
+import { memo, type JSX } from "react";
 import type { SwashSymbol } from "@conetic/shared";
 
 interface Props {
@@ -260,19 +260,22 @@ function Bomb({ value }: { value?: number }) {
 
 // ────────────────────────── dispatch ──────────────────────────
 
-export function SwashSymbolIcon({ symbol, winning }: Props): JSX.Element {
-  const inner = pick(symbol);
-  return <span className={`swash-sym-wrap ${winning ? "is-winning" : ""}`}>{inner}</span>;
-}
+// Memoized so that re-renders where the symbol/winning props haven't changed
+// skip SVG reconciliation entirely. The grid has 30 cells; without memo each
+// cascade step would re-render all 30 SVGs. With memo only the cells whose
+// symbol changed do real work.
+export const SwashSymbolIcon = memo(function SwashSymbolIcon({ symbol, winning }: Props): JSX.Element {
+  return <span className={`swash-sym-wrap ${winning ? "is-winning" : ""}`}>{pick(symbol)}</span>;
+});
 
 /** Variant that draws a bomb with its value shown. */
-export function SwashBombIcon({ value, winning }: { value: number; winning?: boolean }): JSX.Element {
+export const SwashBombIcon = memo(function SwashBombIcon({ value, winning }: { value: number; winning?: boolean }): JSX.Element {
   return (
     <span className={`swash-sym-wrap swash-sym-bomb ${winning ? "is-winning" : ""}`}>
       <Bomb value={value} />
     </span>
   );
-}
+});
 
 function pick(s: SwashSymbol): JSX.Element {
   switch (s) {
