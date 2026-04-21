@@ -165,6 +165,7 @@ export function recentBets(limit: number): UnifiedBet[] {
   const house = houseRowsFor(
     `SELECT id, user_id, game, bet_nano, payout_nano, multiplier, outcome_json, created_at
        FROM house_game_plays
+       WHERE game != 'swashbooze'
        ORDER BY created_at DESC LIMIT ?`, [half * 2],
   ).map(toUnifiedHouse);
 
@@ -192,7 +193,8 @@ export function biggestBets(limit: number): UnifiedBet[] {
   const house = houseRowsFor(
     `SELECT id, user_id, game, bet_nano, payout_nano, multiplier, outcome_json, created_at
        FROM house_game_plays
-       WHERE CAST(payout_nano AS INTEGER) > CAST(bet_nano AS INTEGER)
+       WHERE game != 'swashbooze'
+         AND CAST(payout_nano AS INTEGER) > CAST(bet_nano AS INTEGER)
        ORDER BY (CAST(payout_nano AS INTEGER) - CAST(bet_nano AS INTEGER)) DESC LIMIT ?`, [limit],
   ).map(toUnifiedHouse);
 
@@ -209,7 +211,7 @@ export function luckiestBets(limit: number): UnifiedBet[] {
   const house = houseRowsFor(
     `SELECT id, user_id, game, bet_nano, payout_nano, multiplier, outcome_json, created_at
        FROM house_game_plays
-       WHERE multiplier > 1
+       WHERE game != 'swashbooze' AND multiplier > 1
        ORDER BY multiplier DESC LIMIT ?`, [limit],
   ).map(toUnifiedHouse);
 
@@ -237,7 +239,8 @@ export function userBets(userId: string, limit: number): UnifiedBet[] {
   const house = houseRowsFor(
     `SELECT id, user_id, game, bet_nano, payout_nano, multiplier, outcome_json, created_at
        FROM house_game_plays
-       WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`, [userId, limit],
+       WHERE user_id = ? AND game != 'swashbooze'
+       ORDER BY created_at DESC LIMIT ?`, [userId, limit],
   ).map(toUnifiedHouse);
 
   return [...arena, ...mining, ...house]

@@ -18,7 +18,7 @@
   --blue-d: var(--c-accent-lo);
   --blue-l: var(--c-accent-hi);
   --blue-g: var(--c-accent-wash);
-  --blue-f: rgba(76, 184, 255, 0.05);
+  --blue-f: rgba(111, 224, 132, 0.05);
   --blue-glow: var(--c-accent-glow);
   --gold:   var(--c-warn);
   --win:    var(--c-win);

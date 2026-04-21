@@ -1,30 +1,30 @@
-/* Design tokens — sky blue on near-black.
+/* Design tokens — light green on black.
    One accent color, no chromatic decoration. */
 
 :root {
-  /* Surfaces */
-  --c-bg:        #0b1014;  /* body / deepest recess */
-  --c-bg-2:      #0e141a;  /* behind top/bottom nav */
-  --c-surface:   #12181f;  /* cards, tiles, stage, panel */
-  --c-surface-2: #1a2128;  /* hovered card, input recess, input fill */
-  --c-surface-3: #232d38;  /* elevated chips, outer borders */
-  --c-border:    #232d38;
-  --c-border-2:  #2f3c4a;
+  /* Surfaces — pure black with very slight green tint on elevated layers */
+  --c-bg:        #000000;  /* body / deepest recess */
+  --c-bg-2:      #050a07;  /* behind top/bottom nav */
+  --c-surface:   #0b120e;  /* cards, tiles, stage, panel */
+  --c-surface-2: #132018;  /* hovered card, input recess, input fill */
+  --c-surface-3: #1c2e22;  /* elevated chips, outer borders */
+  --c-border:    #1c2e22;
+  --c-border-2:  #284a34;
 
   /* Text */
-  --c-text:   #e7eef5;
-  --c-text-2: #8d9ca8;
-  --c-text-3: #5d6d7d;
+  --c-text:   #e7f5ec;
+  --c-text-2: #8da898;
+  --c-text-3: #5d7d6a;
 
-  /* Accent — single chromatic colour used everywhere */
-  --c-accent:       #4cb8ff;
-  --c-accent-hi:    #6ec5ff;
-  --c-accent-lo:    #2ea0ef;
-  --c-accent-wash:  rgba(76, 184, 255, 0.12);
-  --c-accent-glow:  rgba(76, 184, 255, 0.22);
+  /* Accent — single chromatic colour used everywhere (light green) */
+  --c-accent:       #6fe084;
+  --c-accent-hi:    #8cf1a3;
+  --c-accent-lo:    #48c866;
+  --c-accent-wash:  rgba(111, 224, 132, 0.12);
+  --c-accent-glow:  rgba(111, 224, 132, 0.22);
 
   /* State */
-  --c-win:   #5fd88c;
+  --c-win:   #6fe084;
   --c-loss:  #e25f74;
   --c-warn:  #f1a73e;
 
