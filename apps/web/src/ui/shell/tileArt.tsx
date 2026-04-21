@@ -5,7 +5,7 @@
 import type { JSX } from "react";
 
 const STROKE = "#8d9ca8";       // c-text-2 — neutral line
-const ACCENT = "#6fe084";        // c-accent — light green
+const ACCENT = "#4cc97a";        // c-accent — mint green
 const SURFACE = "#12181f";       // c-surface — tile background
 const SURFACE_HI = "#1a2128";    // c-surface-2 — subtle lift
 

@@ -1,30 +1,32 @@
-/* Design tokens — light green on black.
+/* Design tokens — soft mint green on dark charcoal.
    One accent color, no chromatic decoration. */
 
 :root {
-  /* Surfaces — pure black with very slight green tint on elevated layers */
-  --c-bg:        #000000;  /* body / deepest recess */
-  --c-bg-2:      #050a07;  /* behind top/bottom nav */
-  --c-surface:   #0b120e;  /* cards, tiles, stage, panel */
-  --c-surface-2: #132018;  /* hovered card, input recess, input fill */
-  --c-surface-3: #1c2e22;  /* elevated chips, outer borders */
-  --c-border:    #1c2e22;
-  --c-border-2:  #284a34;
+  /* Surfaces — neutral charcoal, not pure black. Slight coolness for depth
+     without looking tinted. Each layer is a clearly-distinguishable step. */
+  --c-bg:        #0a0f0c;  /* body / deepest recess */
+  --c-bg-2:      #0e1310;  /* behind top/bottom nav */
+  --c-surface:   #141a16;  /* cards, tiles, stage, panel */
+  --c-surface-2: #1c241f;  /* hovered card, input recess, input fill */
+  --c-surface-3: #263028;  /* elevated chips, outer borders */
+  --c-border:    #222a24;
+  --c-border-2:  #2f3a32;
 
-  /* Text */
-  --c-text:   #e7f5ec;
-  --c-text-2: #8da898;
-  --c-text-3: #5d7d6a;
+  /* Text — pale neutral, readable on dark */
+  --c-text:   #e8efe9;
+  --c-text-2: #9aa89f;
+  --c-text-3: #6a7a70;
 
-  /* Accent — single chromatic colour used everywhere (light green) */
-  --c-accent:       #6fe084;
-  --c-accent-hi:    #8cf1a3;
-  --c-accent-lo:    #48c866;
-  --c-accent-wash:  rgba(111, 224, 132, 0.12);
-  --c-accent-glow:  rgba(111, 224, 132, 0.22);
+  /* Accent — muted mint green. Softer than neon — readable on dark cards,
+     doesn't "scream" on large surfaces. Solid enough for button fills. */
+  --c-accent:       #4cc97a;
+  --c-accent-hi:    #62d68b;
+  --c-accent-lo:    #3aad63;
+  --c-accent-wash:  rgba(76, 201, 122, 0.10);
+  --c-accent-glow:  rgba(76, 201, 122, 0.20);
 
   /* State */
-  --c-win:   #6fe084;
+  --c-win:   #4cc97a;
   --c-loss:  #e25f74;
   --c-warn:  #f1a73e;
 
