@@ -20,8 +20,16 @@ const MULTIPLAYER: TileSpec[] = [
   { key: "mining", name: "Mining", game: "mining" },
 ];
 
+const SLOTS: TileSpec[] = [
+  { key: "cosmicLines", name: "Cosmic Lines", sub: "5×3 · 10 lines",    game: "cosmicLines" },
+  { key: "fruitStorm",  name: "Fruit Storm",  sub: "Tumble · Pay-any",  game: "fruitStorm"  },
+  { key: "gemClusters", name: "Gem Clusters", sub: "7×7 · Cluster pays", game: "gemClusters" },
+  { key: "luckySevens", name: "Lucky Sevens", sub: "3×3 · Hold & win",  game: "luckySevens" },
+];
+
 const CATEGORIES: { key: BrowseCategory; label: string }[] = [
   { key: "originals",   label: "Originals"   },
+  { key: "slots",       label: "Slots"       },
   { key: "multiplayer", label: "Multiplayer" },
 ];
 
@@ -32,6 +40,7 @@ export function BrowseHome() {
 
   const section =
     category === "originals"   ? { title: "Originals",   tiles: ORIGINALS   }
+  : category === "slots"       ? { title: "Slots",       tiles: SLOTS       }
   :                              { title: "Multiplayer", tiles: MULTIPLAYER };
 
   return (

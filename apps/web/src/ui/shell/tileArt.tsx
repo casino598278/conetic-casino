@@ -110,12 +110,101 @@ const keno = (
   </g>
 );
 
+// Slot tile art — each variant gets a distinct silhouette so they read
+// differently at small sizes.
+
+const cosmicLines = (
+  <g>
+    {[0, 1, 2, 3, 4].map((c) => (
+      <rect key={c} x={16 + c * 26} y="70" width="22" height="60" rx="4"
+            fill={SURFACE_HI} stroke={STROKE} strokeWidth="1.2" />
+    ))}
+    <circle cx="27" cy="100" r="5" fill={ACCENT} />
+    <circle cx="53" cy="100" r="5" fill={ACCENT} />
+    <circle cx="79" cy="100" r="5" fill={ACCENT} />
+    <line x1="12" y1="100" x2="148" y2="100" stroke={ACCENT} strokeWidth="1" strokeOpacity="0.6" />
+  </g>
+);
+
+const fruitStorm = (
+  <g>
+    {[0, 1, 2, 3, 4, 5].map((c) =>
+      [0, 1, 2, 3, 4].map((r) => {
+        const accent = (c + r) % 7 === 0;
+        return (
+          <circle
+            key={`${c}-${r}`}
+            cx={18 + c * 21}
+            cy={52 + r * 20}
+            r="6"
+            fill={accent ? ACCENT : "none"}
+            stroke={accent ? ACCENT : STROKE}
+            strokeWidth="1.2"
+            opacity={accent ? 0.95 : 0.55}
+          />
+        );
+      }),
+    )}
+  </g>
+);
+
+const gemClusters = (
+  <g>
+    {Array.from({ length: 7 }).map((_, c) =>
+      Array.from({ length: 7 }).map((_, r) => {
+        const hit = (c >= 2 && c <= 4 && r >= 3 && r <= 5) || (c === 0 && r === 0);
+        return (
+          <rect
+            key={`${c}-${r}`}
+            x={14 + c * 19}
+            y={34 + r * 19}
+            width="14"
+            height="14"
+            rx="3"
+            fill={hit ? ACCENT : "none"}
+            stroke={hit ? ACCENT : STROKE}
+            strokeWidth="1.1"
+            opacity={hit ? 0.95 : 0.4}
+          />
+        );
+      }),
+    )}
+  </g>
+);
+
+const luckySevens = (
+  <g>
+    {[0, 1, 2].map((c) =>
+      [0, 1, 2].map((r) => (
+        <rect
+          key={`${c}-${r}`}
+          x={24 + c * 40}
+          y={56 + r * 32}
+          width="32"
+          height="24"
+          rx="4"
+          fill={SURFACE_HI}
+          stroke={STROKE}
+          strokeWidth="1.2"
+        />
+      )),
+    )}
+    <text x="40" y="75" fill={ACCENT} fontFamily="sans-serif" fontSize="16" fontWeight="700">7</text>
+    <text x="80" y="107" fill={ACCENT} fontFamily="sans-serif" fontSize="16" fontWeight="700">7</text>
+    <text x="120" y="139" fill={ACCENT} fontFamily="sans-serif" fontSize="16" fontWeight="700">7</text>
+  </g>
+);
+
 const TILE_ART: Record<string, JSX.Element> = {
   dice,
   limbo,
   arena,
   mining,
   keno,
+  cosmicLines,
+  fruitStorm,
+  gemClusters,
+  luckySevens,
 };
 
 interface Props {

@@ -2341,6 +2341,81 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 
 
+/* ============ Slots ============ */
+.slots-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+.slots-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--c-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.slots-sub { color: var(--c-text-2); }
+.slots-frame { color: var(--c-accent); font-variant-numeric: tabular-nums; }
+.slots-grid {
+  display: grid;
+  gap: 4px;
+  background: var(--c-bg-2);
+  padding: 6px;
+  border-radius: var(--rr);
+  aspect-ratio: var(--slots-aspect, 1);
+  width: 100%;
+}
+.slots-cell {
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--t-sm), border-color var(--t-sm), transform var(--t-sm);
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: 1;
+}
+.slots-cell.is-filled {
+  background: color-mix(in srgb, var(--cell-color) 18%, var(--c-surface-2));
+  border-color: color-mix(in srgb, var(--cell-color) 45%, var(--c-border));
+}
+.slots-cell.is-hit {
+  background: color-mix(in srgb, var(--cell-color) 55%, var(--c-surface-2));
+  border-color: var(--cell-color);
+  transform: scale(1.04);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--cell-color) 50%, transparent);
+}
+.slots-cell-label {
+  font-size: clamp(10px, 2.8vw, 18px);
+  font-weight: 600;
+  color: var(--c-text);
+  font-family: var(--c-font);
+  line-height: 1;
+}
+.slots-cell.is-hit .slots-cell-label { color: #fff; }
+.slots-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  font-variant-numeric: tabular-nums;
+}
+.slots-result-idle { color: var(--c-text-3); font-size: 13px; }
+.slots-result-loss { color: var(--c-text-3); font-size: 13px; }
+.slots-result-mult {
+  color: var(--c-win);
+  font-size: 22px;
+  font-weight: 700;
+}
+.slots-result-profit { color: var(--c-text-2); font-size: 13px; }
+
+
 /* ============ Fairness drawer ============ */
 .fair-body { display: flex; flex-direction: column; gap: 10px; }
 .fair-row { display: flex; flex-direction: column; gap: 4px; }
