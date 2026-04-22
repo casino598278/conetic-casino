@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="wl1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffe69a"/>
+      <stop offset="50%" stop-color="#f5b544"/>
+      <stop offset="100%" stop-color="#8d5f0a"/>
+    </linearGradient>
+    <filter id="wlsh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <g filter="url(#wlsh)">
+    <!-- diamond plate -->
+    <path d="M64 14 L114 64 L64 114 L14 64 Z" fill="url(#wl1)" stroke="#6e3d04" stroke-width="3"/>
+    <!-- W -->
+    <text x="64" y="82" text-anchor="middle" font-family="Impact, 'Arial Black', sans-serif"
+          font-weight="900" font-size="54" fill="#3a1e00" stroke="#fff" stroke-width="2"
+          paint-order="stroke">W</text>
+  </g>
+</svg>

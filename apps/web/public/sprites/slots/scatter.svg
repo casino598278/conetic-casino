@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <radialGradient id="sc1" cx="50%" cy="40%" r="65%">
+      <stop offset="0%" stop-color="#ffe29e"/>
+      <stop offset="50%" stop-color="#ff7ac4"/>
+      <stop offset="100%" stop-color="#7d1a5f"/>
+    </radialGradient>
+    <filter id="scsh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <g filter="url(#scsh)">
+    <!-- lollipop stick -->
+    <rect x="60" y="88" width="8" height="32" rx="3" fill="#fff" stroke="#888" stroke-width="1"/>
+    <!-- lollipop swirl -->
+    <circle cx="64" cy="60" r="40" fill="url(#sc1)" stroke="#4a0f39" stroke-width="3"/>
+    <path d="M64 60 m-30 0 a30 30 0 1 1 60 0" stroke="#fff" stroke-width="5" fill="none" stroke-opacity="0.8"/>
+    <path d="M64 60 m-18 0 a18 18 0 1 1 36 0" stroke="#fff" stroke-width="3" fill="none" stroke-opacity="0.8"/>
+    <circle cx="64" cy="60" r="5" fill="#fff"/>
+    <!-- sparkles -->
+    <circle cx="34" cy="30" r="3" fill="#fff" fill-opacity="0.9"/>
+    <circle cx="100" cy="34" r="2" fill="#fff" fill-opacity="0.9"/>
+    <circle cx="26" cy="74" r="2" fill="#fff" fill-opacity="0.8"/>
+  </g>
+</svg>

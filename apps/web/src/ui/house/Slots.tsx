@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { SlotVariant } from "@conetic/shared";
 import { api, ApiError } from "../../net/api";
 import { haptic, notify } from "../../telegram/initWebApp";
 import { useWalletStore } from "../../state/walletStore";
 import { usePriceStore, usdToNano, nanoToUsd, fmtUsd } from "../../state/priceStore";
 import { AutoPanel, type AutoBetResult } from "./AutoPanel";
+import { SlotStage, type SlotEvent } from "./slots/SlotStage";
 
 interface Props {
   variant: SlotVariant;
@@ -21,45 +22,7 @@ const META: Record<SlotVariant, { title: string; cols: number; rows: number; sub
   luckySevens: { title: "Lucky Sevens", cols: 3, rows: 3, sub: "Classic 3-reel · hold & win" },
 };
 
-/** Symbol palette shared across variants — each symbol renders as a colored
- *  rounded tile with a short text label. Keeps the UI tiny — no sprites yet. */
-const SYMBOL_COLORS: Record<string, string> = {
-  // Cosmic Lines
-  cherry:  "#ff5875",
-  lemon:   "#f5b544",
-  bell:    "#ffc95f",
-  star:    "#3ecf8e",
-  seven:   "#8b5cf6",
-  W:       "#f5b544",
-  S:       "#3ecf8e",
-  // Fruit Storm
-  grape:   "#8b5cf6",
-  apple:   "#ff5875",
-  plum:    "#b44dc7",
-  pear:    "#7fc97f",
-  banana:  "#ffd34d",
-  M:       "#f5b544",
-  // Gem Clusters
-  red:     "#ff5875",
-  orange:  "#ff9a4d",
-  yellow:  "#ffd34d",
-  green:   "#3ecf8e",
-  teal:    "#4dd0e1",
-  purple:  "#8b5cf6",
-  pink:    "#ff77b0",
-  // Lucky Sevens
-  "7":     "#ff5875",
-  bar:     "#f5b544",
-};
-
-const SYMBOL_LABELS: Record<string, string> = {
-  cherry: "🍒", lemon: "🍋", bell: "🔔", star: "★", seven: "7", W: "W", S: "★",
-  grape: "🍇", apple: "🍎", plum: "🫐", pear: "🍐", banana: "🍌", M: "×",
-  red: "◆", orange: "◆", yellow: "◆", green: "◆", teal: "◆", purple: "◆", pink: "◆",
-  "7": "7", bar: "BAR",
-};
-
-interface BasePlayResult {
+interface PlayResult {
   ok: true;
   variant: string;
   outcome: any;
@@ -71,103 +34,6 @@ interface BasePlayResult {
   playId: number;
 }
 
-/** Extract the "frames" to animate from a variant's outcome. Each frame is
- *  one grid snapshot with the highlighted winning positions. We animate by
- *  stepping through frames with a short delay. */
-function framesFor(variant: SlotVariant, outcome: any): { grid: string[][]; highlight: Set<string> }[] {
-  const frames: { grid: string[][]; highlight: Set<string> }[] = [];
-
-  if (variant === "cosmicLines") {
-    const push = (spin: any) => {
-      const hl = new Set<string>();
-      for (const w of spin.lineWins ?? []) {
-        const line = PAYLINES_CL[w.lineIndex];
-        if (!line) continue;
-        for (let i = 0; i < w.count; i++) {
-          const [c, r] = line[i]!;
-          hl.add(`${c},${r}`);
-        }
-      }
-      // Also highlight scatters on the initial grid.
-      for (let c = 0; c < spin.grid.length; c++) {
-        for (let r = 0; r < spin.grid[c].length; r++) {
-          if (spin.grid[c][r] === "S") hl.add(`${c},${r}`);
-        }
-      }
-      frames.push({ grid: spin.grid, highlight: hl });
-    };
-    push(outcome.baseSpin);
-    for (const s of outcome.freeSpins ?? []) push(s);
-    return frames;
-  }
-
-  if (variant === "fruitStorm") {
-    const pushSpin = (spin: any) => {
-      for (const step of spin.tumbleSteps) {
-        frames.push({
-          grid: step.grid,
-          highlight: new Set<string>((step.clearedPositions ?? []).map(([c, r]: [number, number]) => `${c},${r}`)),
-        });
-      }
-    };
-    pushSpin(outcome.baseSpin);
-    for (const s of outcome.freeSpins ?? []) pushSpin(s);
-    return frames;
-  }
-
-  if (variant === "gemClusters") {
-    for (const step of outcome.steps) {
-      const hl = new Set<string>();
-      for (const k of step.clusters ?? []) {
-        for (const [c, r] of k.cells) hl.add(`${c},${r}`);
-      }
-      frames.push({ grid: step.grid, highlight: hl });
-    }
-    return frames;
-  }
-
-  if (variant === "luckySevens") {
-    const lineHl = new Set<string>();
-    for (const w of outcome.lineWins ?? []) {
-      const line = PAYLINES_LS[w.lineIndex];
-      if (!line) continue;
-      for (const [c, r] of line) lineHl.add(`${c},${r}`);
-    }
-    for (let i = 0; i < outcome.steps.length; i++) {
-      const step = outcome.steps[i];
-      const isFinal = i === outcome.steps.length - 1;
-      const hl = new Set<string>(step.lockedSevens.map(([c, r]: [number, number]) => `${c},${r}`));
-      if (isFinal) for (const k of lineHl) hl.add(k);
-      frames.push({ grid: step.grid, highlight: hl });
-    }
-    return frames;
-  }
-
-  return frames;
-}
-
-// Paylines must match the shared package — duplicated here because the module
-// doesn't export them (they're internal). If we ever change them, update both.
-const PAYLINES_CL: [number, number][][] = [
-  [[0,1],[1,1],[2,1],[3,1],[4,1]],
-  [[0,0],[1,0],[2,0],[3,0],[4,0]],
-  [[0,2],[1,2],[2,2],[3,2],[4,2]],
-  [[0,0],[1,1],[2,2],[3,1],[4,0]],
-  [[0,2],[1,1],[2,0],[3,1],[4,2]],
-  [[0,1],[1,0],[2,0],[3,0],[4,1]],
-  [[0,1],[1,2],[2,2],[3,2],[4,1]],
-  [[0,0],[1,0],[2,1],[3,2],[4,2]],
-  [[0,2],[1,2],[2,1],[3,0],[4,0]],
-  [[0,1],[1,2],[2,1],[3,0],[4,1]],
-];
-const PAYLINES_LS: [number, number][][] = [
-  [[0,0],[1,0],[2,0]],
-  [[0,1],[1,1],[2,1]],
-  [[0,2],[1,2],[2,2]],
-  [[0,0],[1,1],[2,2]],
-  [[0,2],[1,1],[2,0]],
-];
-
 export function Slots({ variant, onBack, onError, onOpenFairness }: Props) {
   const meta = META[variant];
   const balance = useWalletStore((s) => s.balanceNano);
@@ -176,65 +42,48 @@ export function Slots({ variant, onBack, onError, onOpenFairness }: Props) {
   const [mode, setMode] = useState<"manual" | "auto">("manual");
   const [busy, setBusy] = useState(false);
   const [rolling, setRolling] = useState(false);
-  /** The grid currently painted on-screen (either static initial or an animating frame). */
-  const [visibleGrid, setVisibleGrid] = useState<string[][]>(() =>
-    Array.from({ length: meta.cols }, () => Array.from({ length: meta.rows }, () => "")),
-  );
-  const [highlight, setHighlight] = useState<Set<string>>(new Set());
-  const [lastResult, setLastResult] = useState<BasePlayResult | null>(null);
-  const [frameIdx, setFrameIdx] = useState(0);
-  const timersRef = useRef<number[]>([]);
-
-  useEffect(() => () => timersRef.current.forEach((t) => clearTimeout(t)), []);
-
-  const FRAME_MS = variant === "fruitStorm" || variant === "gemClusters" ? 550 : 700;
+  const [outcome, setOutcome] = useState<any | null>(null);
+  const [playToken, setPlayToken] = useState(0);
+  const [lastResult, setLastResult] = useState<PlayResult | null>(null);
+  const [badgeKey, setBadgeKey] = useState(0);
+  // Resolves the pending placeBet() when SlotStage finishes its animation,
+  // so AutoPanel's settleDelayMs doesn't have to guess the animation length.
+  const pendingSettleRef = useRef<((r: AutoBetResult) => void) | null>(null);
 
   const placeBet = async (nano: bigint): Promise<AutoBetResult> => {
     setBusy(true);
     haptic("light");
     try {
-      const r: BasePlayResult = await api(`/single/slots/${variant}/play`, {
+      const r: PlayResult = await api(`/single/slots/${variant}/play`, {
         method: "POST",
         body: JSON.stringify({ amountNano: nano.toString(), params: {} }),
       });
       setBalance(BigInt(r.newBalanceNano));
       setLastResult(r);
-      animateFrames(r);
+      setOutcome(r.outcome);
+      setPlayToken((t) => t + 1);
+      setRolling(true);
+      setBadgeKey((k) => k + 1);
       notify(r.multiplier > 0 ? "success" : "warning");
-      return {
-        win: r.multiplier > 0,
-        betNano: BigInt(r.betNano),
-        payoutNano: BigInt(r.payoutNano),
-      };
+      // Wait for SlotStage's onComplete before resolving AutoPanel, so it
+      // naturally paces itself to whatever the tumble chain takes.
+      return await new Promise<AutoBetResult>((resolve) => {
+        pendingSettleRef.current = resolve;
+        // Fallback: if the stage never reports (e.g. the component unmounts),
+        // resolve after a max timeout so autobet doesn't hang.
+        setTimeout(() => {
+          if (pendingSettleRef.current) {
+            pendingSettleRef.current({
+              win: r.multiplier > 0,
+              betNano: BigInt(r.betNano),
+              payoutNano: BigInt(r.payoutNano),
+            });
+            pendingSettleRef.current = null;
+          }
+        }, 10_000);
+      });
     } finally {
       setBusy(false);
-    }
-  };
-
-  const animateFrames = (r: BasePlayResult) => {
-    timersRef.current.forEach((t) => clearTimeout(t));
-    timersRef.current = [];
-    const frames = framesFor(variant, r.outcome);
-    if (frames.length === 0) { setRolling(false); return; }
-    setRolling(true);
-    setFrameIdx(0);
-    setVisibleGrid(frames[0]!.grid);
-    setHighlight(frames[0]!.highlight);
-    for (let i = 1; i < frames.length; i++) {
-      const t = window.setTimeout(() => {
-        setFrameIdx(i);
-        setVisibleGrid(frames[i]!.grid);
-        setHighlight(frames[i]!.highlight);
-        if (i === frames.length - 1) {
-          const done = window.setTimeout(() => setRolling(false), FRAME_MS);
-          timersRef.current.push(done);
-        }
-      }, i * FRAME_MS);
-      timersRef.current.push(t);
-    }
-    if (frames.length === 1) {
-      const done = window.setTimeout(() => setRolling(false), FRAME_MS);
-      timersRef.current.push(done);
     }
   };
 
@@ -271,6 +120,32 @@ export function Slots({ variant, onBack, onError, onOpenFairness }: Props) {
     return "Bet failed. Check your connection.";
   }
 
+  const onStageEvent = (e: SlotEvent) => {
+    switch (e.kind) {
+      case "reel-land":
+      case "tumble":
+        haptic("light");
+        break;
+      case "win-pop":
+        haptic(e.count >= 8 ? "heavy" : "medium");
+        break;
+      case "big-win":
+        notify("success");
+        break;
+      case "done":
+        setRolling(false);
+        if (pendingSettleRef.current && lastResult) {
+          pendingSettleRef.current({
+            win: lastResult.multiplier > 0,
+            betNano: BigInt(lastResult.betNano),
+            payoutNano: BigInt(lastResult.payoutNano),
+          });
+          pendingSettleRef.current = null;
+        }
+        break;
+    }
+  };
+
   const setAmountUsd = (usd: number) => {
     if (!Number.isFinite(usd) || usd <= 0) { setAmount("0"); return; }
     setAmount(usd.toFixed(2));
@@ -294,8 +169,6 @@ export function Slots({ variant, onBack, onError, onOpenFairness }: Props) {
       ? nanoToUsd(BigInt(lastResult.payoutNano) - usdToNano(parseFloat(amount) || 0, usdPerTon), usdPerTon)
       : 0;
 
-  const frameCount = lastResult ? framesFor(variant, lastResult.outcome).length : 0;
-
   return (
     <div className="sg-screen">
       <div className="sg-head">
@@ -317,50 +190,25 @@ export function Slots({ variant, onBack, onError, onOpenFairness }: Props) {
       <div className="sg-stage slots-stage">
         <div className="slots-meta">
           <span className="slots-sub">{meta.sub}</span>
-          {rolling && frameCount > 1 && (
-            <span className="slots-frame">Spin {frameIdx + 1}/{frameCount}</span>
-          )}
         </div>
 
-        <div
-          className="slots-grid"
-          style={{
-            gridTemplateColumns: `repeat(${meta.cols}, 1fr)`,
-            gridTemplateRows: `repeat(${meta.rows}, 1fr)`,
-          }}
-        >
-          {Array.from({ length: meta.rows }).map((_, r) =>
-            Array.from({ length: meta.cols }).map((_, c) => {
-              const sym = visibleGrid[c]?.[r] ?? "";
-              const key = `${c},${r}`;
-              const hit = highlight.has(key);
-              const color = SYMBOL_COLORS[sym] ?? "var(--c-surface-2)";
-              const label = SYMBOL_LABELS[sym] ?? sym;
-              return (
-                <div
-                  key={key}
-                  className={`slots-cell ${hit ? "is-hit" : ""} ${sym ? "is-filled" : ""}`}
-                  style={{ "--cell-color": color } as React.CSSProperties}
-                >
-                  <span className="slots-cell-label">{label}</span>
-                </div>
-              );
-            }),
-          )}
-        </div>
-
-        <div className="slots-result">
-          {mult == null ? (
-            <div className="slots-result-idle">Press spin to play</div>
-          ) : won ? (
-            <>
-              <div className="slots-result-mult">{mult.toFixed(2)}×</div>
-              <div className="slots-result-profit">
-                {usdPerTon != null ? `+${fmtUsd(profitUsd)}` : "Win"}
+        <div className="slots-canvas-wrap">
+          <SlotStage
+            variant={variant}
+            cols={meta.cols}
+            rows={meta.rows}
+            outcome={outcome}
+            playToken={playToken}
+            onComplete={() => { /* handled via onEvent 'done' */ }}
+            onEvent={onStageEvent}
+          />
+          {won && mult != null && !rolling && (
+            <div key={badgeKey} className="slots-win-badge" role="status">
+              <div className="slots-win-badge-mult">{mult.toFixed(2)}×</div>
+              <div className="slots-win-badge-profit">
+                {usdPerTon != null ? `+${fmtUsd(profitUsd)}` : "Win!"}
               </div>
-            </>
-          ) : (
-            <div className="slots-result-loss">No win</div>
+            </div>
           )}
         </div>
       </div>
@@ -410,7 +258,9 @@ export function Slots({ variant, onBack, onError, onOpenFairness }: Props) {
         ) : (
           <AutoPanel
             balance={balance}
-            settleDelayMs={FRAME_MS * 4 + 300}
+            // Stage drives its own pacing via onEvent("done"); settleDelay
+            // here is just a small gap after that before the next bet fires.
+            settleDelayMs={300}
             initialAmount={amount}
             onAmountChange={setAmount}
             placeBet={placeBet}

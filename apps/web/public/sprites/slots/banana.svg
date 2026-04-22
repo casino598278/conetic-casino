@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bn1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fff4b8"/>
+      <stop offset="55%" stop-color="#ffd532"/>
+      <stop offset="100%" stop-color="#b37d0e"/>
+    </linearGradient>
+    <filter id="bnsh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <g filter="url(#bnsh)">
+    <!-- curved banana shape -->
+    <path d="M24 40 Q28 18 54 20 Q70 22 80 38 Q92 56 104 78 Q108 90 100 98 Q90 108 76 100 Q60 92 46 76 Q30 56 26 42 Z"
+          fill="url(#bn1)" stroke="#6b470b" stroke-width="2"/>
+    <!-- stem at top -->
+    <path d="M50 20 L46 12 L60 10 L58 18" fill="#6b470b"/>
+    <!-- tip at bottom -->
+    <path d="M100 94 L110 92 L108 102 L100 100 Z" fill="#5a3a09"/>
+    <!-- highlight curve -->
+    <path d="M40 40 Q48 28 62 28 Q72 30 80 42"
+          stroke="#fff" stroke-width="4" stroke-opacity="0.55" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

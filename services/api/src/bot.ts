@@ -2,6 +2,23 @@ import { Bot, InlineKeyboard } from "grammy";
 import { config } from "./config.js";
 import { upsertTelegramUser, getUserById } from "./db/repo/users.js";
 import { getHotWalletAddressString } from "./wallet/ton/tonAdapter.js";
+import { credit, getBalanceNano } from "./db/repo/ledger.js";
+import { pushBalance } from "./ws/gateway.js";
+import { ADMIN_TG_ID } from "./admin/constants.js";
+
+const NANO = 1_000_000_000n;
+const TOPUP_DEFAULT_TON = 10_000;
+
+function tonToNano(ton: number): bigint {
+  const s = ton.toFixed(9);
+  const [whole, frac = ""] = s.split(".");
+  return BigInt(whole!) * NANO + BigInt(frac.padEnd(9, "0").slice(0, 9));
+}
+function fmtTon(nano: bigint): string {
+  const whole = nano / NANO;
+  const frac = (nano % NANO).toString().padStart(9, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : `${whole}`;
+}
 
 let started = false;
 let botInstance: Bot | null = null;
@@ -79,6 +96,43 @@ export function startBot() {
     );
   });
 
+  // Admin-only: credit TON to the admin's balance. Useful for testing flows
+  // without needing to spin up a Render shell session. Usage:
+  //   /topup          → credits TOPUP_DEFAULT_TON
+  //   /topup 500      → credits 500 TON
+  bot.command("topup", async (ctx) => {
+    const from = ctx.from;
+    if (!from || from.id !== ADMIN_TG_ID) {
+      await ctx.reply("Admin only.");
+      return;
+    }
+    const arg = (ctx.match ?? "").trim();
+    const ton = arg === "" ? TOPUP_DEFAULT_TON : Number(arg);
+    if (!Number.isFinite(ton) || ton <= 0) {
+      await ctx.reply("Usage: /topup [amount_ton]\nExample: /topup 500");
+      return;
+    }
+    const user = upsertTelegramUser({
+      tgId: from.id,
+      username: from.username ?? null,
+      firstName: from.first_name ?? "Admin",
+      photoUrl: null,
+    });
+    const amountNano = tonToNano(ton);
+    credit({
+      userId: user.id,
+      amountNano,
+      reason: "bonus",
+      refId: `topup-${Date.now()}`,
+    });
+    const newBal = getBalanceNano(user.id);
+    pushBalance(user.id, newBal);
+    await ctx.reply(
+      `Credited ${ton.toLocaleString()} TON.\nBalance: ${fmtTon(newBal)} TON.`,
+      { reply_markup: openKb() },
+    );
+  });
+
   bot.catch((err) => console.error("[bot] error", err));
 
   if (config.PUBLIC_WEB_URL.startsWith("https://")) {
@@ -93,6 +147,7 @@ export function startBot() {
         { command: "start", description: "Welcome + menu" },
         { command: "deposit", description: "Get your deposit address" },
         { command: "withdraw", description: "Withdraw TON" },
+        { command: "topup", description: "(admin) credit TON to balance" },
       ])
       .catch((err) => console.warn("[bot] setMyCommands failed:", err.message));
   } else {

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="br1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2a2a2a"/>
+      <stop offset="50%" stop-color="#0f0f0f"/>
+      <stop offset="100%" stop-color="#000"/>
+    </linearGradient>
+    <filter id="brsh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <g filter="url(#brsh)">
+    <rect x="14" y="36" width="100" height="56" rx="6" fill="url(#br1)" stroke="#f5b544" stroke-width="3"/>
+    <text x="64" y="76" text-anchor="middle" font-family="Impact, 'Arial Black', sans-serif"
+          font-weight="900" font-size="30" fill="#f5b544" letter-spacing="2">BAR</text>
+  </g>
+</svg>

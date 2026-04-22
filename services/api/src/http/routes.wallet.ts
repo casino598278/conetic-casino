@@ -21,9 +21,7 @@ import { getHotWalletAddressString } from "../wallet/ton/tonAdapter.js";
 import { txn } from "../db/sqlite.js";
 import { notifyUser } from "../bot.js";
 import { pushBalance } from "../ws/gateway.js";
-
-const ADMIN_TG_ID = 6712382929;
-const ADMIN_APPROVAL_THRESHOLD_NANO = 50n * 1_000_000_000n; // 50 TON
+import { ADMIN_TG_ID, ADMIN_APPROVAL_THRESHOLD_NANO } from "../admin/constants.js";
 const WITHDRAW_COOLDOWN_MS = 3 * 60 * 1000; // 3 minutes between withdrawals
 const lastWithdrawTime = new Map<string, number>();
 
