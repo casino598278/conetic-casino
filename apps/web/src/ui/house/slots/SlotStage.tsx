@@ -102,6 +102,30 @@ interface StageInternals {
   aborted: boolean;
 }
 
+/** Run the queued play if Pixi is ready AND we haven't already played this
+ *  token. Safe to call at any time — from the React effect when deps
+ *  change, and from the Pixi init tail when the app first becomes ready. */
+function tryPlay(
+  pendingRef: React.MutableRefObject<{ playToken: number; outcome: any | null }>,
+  internalsRef: React.MutableRefObject<StageInternals | null>,
+  variant: SlotVariant,
+  onComplete: () => void,
+  onEvent?: (e: SlotEvent) => void,
+): void {
+  const it = internalsRef.current;
+  const pending = pendingRef.current;
+  if (!it || !pending.outcome || it.lastToken === pending.playToken) return;
+  it.lastToken = pending.playToken;
+  it.aborted = false;
+  it.running = true;
+  const emit = onEvent ?? (() => {});
+  playSequence(it, variant, pending.outcome, emit).then(() => {
+    it.running = false;
+    onComplete();
+    emit({ kind: "done" });
+  });
+}
+
 /**
  * SlotStage — a Pixi-rendered slot reel grid. React owns the outcome; Pixi
  * owns the pixels. Plays the variant-specific animation sequence on every
@@ -116,6 +140,13 @@ export function SlotStage({
 }: SlotStageProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const internalsRef = useRef<StageInternals | null>(null);
+  /** Latest (playToken, outcome) the parent asked us to play. If Pixi init
+   *  hasn't finished when this updates we keep the request here; when init
+   *  completes it checks this ref and plays. */
+  const pendingPlayRef = useRef<{ playToken: number; outcome: any | null }>({
+    playToken: -1,
+    outcome: null,
+  });
 
   // Mount Pixi + preload sprites once per (cols, rows) change. If the user
   // navigates between variants with different grid sizes we tear down and
@@ -236,6 +267,8 @@ export function SlotStage({
 
         // Paint an initial random board so the stage isn't empty on first load.
         paintRandomBoard(internalsRef.current, variant);
+        // Drain any spin request that arrived during init.
+        tryPlay(pendingPlayRef, internalsRef, variant, onComplete, onEvent);
       })
       .catch((err) => console.error("[SlotStage] init failed", err));
 
@@ -250,17 +283,13 @@ export function SlotStage({
   }, [cols, rows]);
 
   // Every time playToken bumps with a non-null outcome, play the sequence.
+  // If Pixi init hasn't finished yet we stash the request in a pending ref
+  // and the init promise's tail will pick it up. Without this, a spin
+  // triggered during the first ~300ms of mount would silently do nothing
+  // and leave the parent's `rolling` state stuck on.
   useEffect(() => {
-    const it = internalsRef.current;
-    if (!it || it.lastToken === playToken || !outcome) return;
-    it.lastToken = playToken;
-    it.aborted = false;
-    it.running = true;
-    playSequence(it, variant, outcome, onEvent ?? (() => {})).then(() => {
-      it.running = false;
-      onComplete();
-      onEvent?.({ kind: "done" });
-    });
+    pendingPlayRef.current = { playToken, outcome };
+    tryPlay(pendingPlayRef, internalsRef, variant, onComplete, onEvent);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playToken, outcome]);
 

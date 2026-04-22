@@ -48,7 +48,11 @@ export function Slots({ variant, onBack, onError, onOpenFairness }: Props) {
   const [badgeKey, setBadgeKey] = useState(0);
   // Resolves the pending placeBet() when SlotStage finishes its animation,
   // so AutoPanel's settleDelayMs doesn't have to guess the animation length.
+  // We also stash the bet details in a ref because `onStageEvent` runs via
+  // React-level closure; reading `lastResult` from state would give us the
+  // previous spin's data on first play (state batching timing issue).
   const pendingSettleRef = useRef<((r: AutoBetResult) => void) | null>(null);
+  const lastBetRef = useRef<{ win: boolean; betNano: bigint; payoutNano: bigint } | null>(null);
 
   const placeBet = async (nano: bigint): Promise<AutoBetResult> => {
     setBusy(true);
@@ -65,6 +69,12 @@ export function Slots({ variant, onBack, onError, onOpenFairness }: Props) {
       setRolling(true);
       setBadgeKey((k) => k + 1);
       notify(r.multiplier > 0 ? "success" : "warning");
+      const settled: AutoBetResult = {
+        win: r.multiplier > 0,
+        betNano: BigInt(r.betNano),
+        payoutNano: BigInt(r.payoutNano),
+      };
+      lastBetRef.current = settled;
       // Wait for SlotStage's onComplete before resolving AutoPanel, so it
       // naturally paces itself to whatever the tumble chain takes.
       return await new Promise<AutoBetResult>((resolve) => {
@@ -73,12 +83,9 @@ export function Slots({ variant, onBack, onError, onOpenFairness }: Props) {
         // resolve after a max timeout so autobet doesn't hang.
         setTimeout(() => {
           if (pendingSettleRef.current) {
-            pendingSettleRef.current({
-              win: r.multiplier > 0,
-              betNano: BigInt(r.betNano),
-              payoutNano: BigInt(r.payoutNano),
-            });
+            pendingSettleRef.current(settled);
             pendingSettleRef.current = null;
+            setRolling(false);
           }
         }, 10_000);
       });
@@ -134,12 +141,8 @@ export function Slots({ variant, onBack, onError, onOpenFairness }: Props) {
         break;
       case "done":
         setRolling(false);
-        if (pendingSettleRef.current && lastResult) {
-          pendingSettleRef.current({
-            win: lastResult.multiplier > 0,
-            betNano: BigInt(lastResult.betNano),
-            payoutNano: BigInt(lastResult.payoutNano),
-          });
+        if (pendingSettleRef.current && lastBetRef.current) {
+          pendingSettleRef.current(lastBetRef.current);
           pendingSettleRef.current = null;
         }
         break;
