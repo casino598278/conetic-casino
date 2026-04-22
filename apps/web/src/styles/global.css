@@ -2345,19 +2345,71 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 .slots-stage {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 8px;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--rr-lg);
+  position: relative;
+  overflow: hidden;
 }
+/* Per-variant gradient backgrounds — matches the canvas well colour so the
+   canvas blends into the wrapper without a hard seam. */
+.slots-theme-fruitStorm {
+  background: radial-gradient(ellipse at 50% 0%,
+    #ff7ed9 0%, #a84ee0 35%, #4e2aa4 75%, #1f0f4a 100%);
+}
+.slots-theme-cosmicLines {
+  background: radial-gradient(ellipse at 50% 0%,
+    #6c5dd3 0%, #2e2370 40%, #120c30 100%);
+}
+.slots-theme-gemClusters {
+  background: radial-gradient(ellipse at 50% 0%,
+    #36bac9 0%, #0a5868 45%, #041a22 100%);
+}
+.slots-theme-luckySevens {
+  background: linear-gradient(180deg,
+    #6a0c1c 0%, #2a0404 60%, #120000 100%);
+}
+
+.slots-hud {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  padding: 0 2px;
+}
+.slots-hud-pill {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--rr);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.slots-hud-lbl {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+.slots-hud-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.slots-hud-val.is-win { color: #ffe08a; }
+
 .slots-meta {
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: 11px;
-  color: var(--c-text-3);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.75);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
 }
-.slots-sub { color: var(--c-text-2); }
+.slots-sub { color: rgba(255, 255, 255, 0.85); }
 .slots-canvas-wrap {
   position: relative;
   width: 100%;
@@ -2367,8 +2419,9 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 .slots-stage-host {
   width: 100%;
-  max-width: 600px;
+  max-width: 560px;
   display: block;
+  filter: drop-shadow(0 12px 30px rgba(0, 0, 0, 0.45));
 }
 .slots-stage-host canvas {
   width: 100% !important;

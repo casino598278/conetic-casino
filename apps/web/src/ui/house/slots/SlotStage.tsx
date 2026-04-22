@@ -43,9 +43,33 @@ export type SlotEvent =
   | { kind: "done" };
 
 // ─── sizing ─────────────────────────────────────────────────────────────────
-const CELL_PX = 96;        // logical px per cell (scaled by devicePixelRatio)
+// Cell size is variant-dependent so a 7×7 grid doesn't blow out the mobile
+// width. See CELL_PX_FOR below.
 const CELL_GAP = 4;
-const PAD = 8;
+const PAD = 10;
+
+/** Pick a cell pixel size that keeps the 6× and 7× grids on-screen in a
+ *  ~360px mobile viewport while still giving the 3×3 classic slot big
+ *  punchy symbols. Computed once per mount. */
+const CELL_PX_FOR: Record<SlotVariant, number> = {
+  cosmicLines: 84,
+  fruitStorm:  72,
+  gemClusters: 60,
+  luckySevens: 120,
+};
+
+/** Per-variant palette. Each slot's backdrop matches the theme:
+ *   fruitStorm   — Sweet-Bonanza candy land (pink/violet)
+ *   cosmicLines  — deep violet night sky
+ *   gemClusters  — teal jewel case
+ *   luckySevens  — classic red/black arcade */
+interface VariantBg { top: number; well: number; wellBorder: number; cell: number; cellBorder: number; }
+const VARIANT_BG: Record<SlotVariant, VariantBg> = {
+  fruitStorm:  { top: 0x4e2aa4, well: 0x32127a, wellBorder: 0x9d6bff, cell: 0x2a0e66, cellBorder: 0xb08cff },
+  cosmicLines: { top: 0x1b1247, well: 0x0e0a2e, wellBorder: 0x6c5dd3, cell: 0x120a3a, cellBorder: 0x8478e5 },
+  gemClusters: { top: 0x0a3642, well: 0x062130, wellBorder: 0x36bac9, cell: 0x051a23, cellBorder: 0x4dd0e1 },
+  luckySevens: { top: 0x3a0b0b, well: 0x1a0404, wellBorder: 0xd94057, cell: 0x230606, cellBorder: 0xff7a87 },
+};
 // Reels "roll" during spin by cycling through a tall symbol strip — rollers
 // are kept in a vertical Container that is translated Y during the spin.
 const SPIN_STRIP_LEN = 8;  // symbols shown in the rolling blur
@@ -101,16 +125,17 @@ export function SlotStage({
     const host = hostRef.current;
     if (!host) return;
 
-    const cellSize = CELL_PX;
+    const cellSize = CELL_PX_FOR[variant];
     const stageW = cols * cellSize + (cols - 1) * CELL_GAP + PAD * 2;
     const stageH = rows * cellSize + (rows - 1) * CELL_GAP + PAD * 2;
 
+    const bg = VARIANT_BG[variant];
     const app = new Application();
     app
       .init({
         width: stageW,
         height: stageH,
-        background: 0x0f1014,
+        backgroundAlpha: 0, // CSS layer owns the gradient so it can animate
         antialias: true,
         resolution: Math.min(window.devicePixelRatio || 1, 2),
         autoDensity: true,
@@ -121,16 +146,43 @@ export function SlotStage({
         app.canvas.style.width = "100%";
         app.canvas.style.height = "auto";
         app.canvas.style.display = "block";
-        app.canvas.style.borderRadius = "12px";
+        app.canvas.style.borderRadius = "18px";
 
         // Preload every symbol texture. Some variants only need a subset but
         // the total payload is ~17 KB of SVG so we load them all and cache.
-        const loaded = await Assets.load(Object.values(SYMBOL_ASSET_URLS));
+        // Assets.load() with a string[] returns a record keyed by URL string.
+        const loaded = (await Assets.load(Object.values(SYMBOL_ASSET_URLS))) as Record<string, Texture>;
         if (cancelled) return;
         const textures: TexCache = {};
         for (const [k, url] of Object.entries(SYMBOL_ASSET_URLS)) {
-          textures[k as keyof typeof SYMBOL_ASSET_URLS] = (loaded as Record<string, Texture>)[url];
+          // Assets.load resolves by the resolved href; look up both forms.
+          textures[k as keyof typeof SYMBOL_ASSET_URLS] =
+            loaded[url] ?? loaded[new URL(url, window.location.href).href];
         }
+
+        // Painted backdrop: theme-appropriate colour for each variant. The
+        // reel well is a rounded rect with an inner shadow frame so the
+        // grid reads as a real slot machine chassis.
+        const backdrop = new Graphics()
+          .roundRect(0, 0, stageW, stageH, 18)
+          .fill({ color: bg.top });
+        app.stage.addChild(backdrop);
+
+        // Per-column reel well — subtle inset rectangles so each column looks
+        // like its own physical reel.
+        const reelWells = new Container();
+        reelWells.position.set(PAD, PAD);
+        for (let c = 0; c < cols; c++) {
+          const wellX = c * (cellSize + CELL_GAP) - CELL_GAP / 2;
+          const wellW = cellSize + CELL_GAP;
+          const wellH = rows * (cellSize + CELL_GAP) - CELL_GAP;
+          const g = new Graphics()
+            .roundRect(wellX, -CELL_GAP / 2, wellW, wellH + CELL_GAP, 12)
+            .fill({ color: bg.well, alpha: 0.65 })
+            .stroke({ color: bg.wellBorder, width: 2, alpha: 0.75 });
+          reelWells.addChild(g);
+        }
+        app.stage.addChild(reelWells);
 
         // Grid container — centred with PAD inside the stage.
         const grid = new Container();
@@ -148,17 +200,17 @@ export function SlotStage({
               r * (cellSize + CELL_GAP) + cellSize / 2,
             );
 
-            // cell backdrop
-            const bg = new Graphics()
-              .roundRect(-cellSize / 2, -cellSize / 2, cellSize, cellSize, 10)
-              .fill({ color: 0x1a1d24 })
-              .stroke({ color: 0x2a2e35, width: 1 });
-            cont.addChild(bg);
+            // cell backdrop — translucent so the reel well gradient shows through
+            const cellBg = new Graphics()
+              .roundRect(-cellSize / 2 + 2, -cellSize / 2 + 2, cellSize - 4, cellSize - 4, 10)
+              .fill({ color: bg.cell, alpha: 0.5 })
+              .stroke({ color: bg.cellBorder, width: 1, alpha: 0.4 });
+            cont.addChild(cellBg);
 
             // glow ring shown on wins (hidden by default)
             const glow = new Graphics()
               .roundRect(-cellSize / 2 + 2, -cellSize / 2 + 2, cellSize - 4, cellSize - 4, 10)
-              .stroke({ color: 0xf5b544, width: 3 });
+              .stroke({ color: 0xffd34d, width: 4 });
             glow.alpha = 0;
             cont.addChild(glow);
 

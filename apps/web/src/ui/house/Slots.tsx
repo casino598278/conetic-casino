@@ -187,7 +187,32 @@ export function Slots({ variant, onBack, onError, onOpenFairness }: Props) {
         </button>
       </div>
 
-      <div className="sg-stage slots-stage">
+      <div className={`sg-stage slots-stage slots-theme-${variant}`}>
+        <div className="slots-hud">
+          <div className="slots-hud-pill">
+            <span className="slots-hud-lbl">Bet</span>
+            <span className="slots-hud-val">
+              {usdPerTon != null ? fmtUsd(parseFloat(amount) || 0) : "—"}
+            </span>
+          </div>
+          <div className="slots-hud-pill">
+            <span className="slots-hud-lbl">Win</span>
+            <span className={`slots-hud-val ${won ? "is-win" : ""}`}>
+              {won && mult != null && usdPerTon != null
+                ? fmtUsd(profitUsd)
+                : mult != null && !won
+                  ? "—"
+                  : "—"}
+            </span>
+          </div>
+          <div className="slots-hud-pill">
+            <span className="slots-hud-lbl">Balance</span>
+            <span className="slots-hud-val">
+              {usdPerTon != null ? fmtUsd(nanoToUsd(balance, usdPerTon)) : "—"}
+            </span>
+          </div>
+        </div>
+
         <div className="slots-meta">
           <span className="slots-sub">{meta.sub}</span>
         </div>

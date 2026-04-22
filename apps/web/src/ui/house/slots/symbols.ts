@@ -4,10 +4,13 @@
 //   - an optional tint (used for Gem Clusters, where one gem.svg drives
 //     all seven colour variants via Sprite.tint)
 //
-// Vite rewrites the `new URL(..., import.meta.url)` strings to hashed asset
-// paths at build, and serves the raw SVG from /sprites/slots/*.svg in dev.
+// Files live in apps/web/public/sprites/slots/ — Vite serves the public/
+// folder at the site root *without* the `public/` prefix. So the correct
+// browser URL is `/sprites/slots/cherry.svg`. A previous version of this
+// file used `new URL(..., import.meta.url)` which resolved to
+// `/public/sprites/...` and 404'd in production — do not revert to that.
 
-const base = (name: string) => new URL(`../../../../public/sprites/slots/${name}`, import.meta.url).href;
+const base = (name: string) => `/sprites/slots/${name}`;
 
 /** All unique SVG assets the stage needs to preload. Order doesn't matter. */
 export const SYMBOL_ASSET_URLS = {
