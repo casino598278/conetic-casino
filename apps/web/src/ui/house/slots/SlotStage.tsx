@@ -1,24 +1,16 @@
-import { useEffect, useRef } from "react";
-import {
-  Application,
-  Assets,
-  Container,
-  Graphics,
-  Sprite,
-  Texture,
-  type Ticker,
-} from "pixi.js";
+import { useEffect, useRef, useState } from "react";
 import type { SlotVariant } from "@conetic/shared";
 import { SYMBOL_ASSET_URLS, specFor } from "./symbols";
-import {
-  tween,
-  delay,
-  easeOutBack,
-  easeOutBounce,
-  easeInCubic,
-  easeOutCubic,
-  easeInOutCubic,
-} from "./tween";
+
+// ─── DOM-based slot stage ──────────────────────────────────────────────────
+//
+// Previous iteration used PixiJS v8. Init/destroy had tree-shaking and
+// timing bugs on the Telegram WebView that left the canvas missing on
+// some devices. This version renders purely with React + CSS grid + the
+// Web Animations API — no canvas, no async init race, no plugin footguns.
+//
+// The server-side math and outcome shapes are unchanged; this file is
+// strictly the pixel layer.
 
 export interface SlotStageProps {
   variant: SlotVariant;
@@ -42,327 +34,20 @@ export type SlotEvent =
   | { kind: "tumble" }
   | { kind: "done" };
 
-// ─── sizing ─────────────────────────────────────────────────────────────────
-// Cell size is variant-dependent so a 7×7 grid doesn't blow out the mobile
-// width. See CELL_PX_FOR below.
-const CELL_GAP = 4;
-const PAD = 10;
-
-/** Pick a cell pixel size that keeps the 6× and 7× grids on-screen in a
- *  ~360px mobile viewport while still giving the 3×3 classic slot big
- *  punchy symbols. Computed once per mount. */
-const CELL_PX_FOR: Record<SlotVariant, number> = {
-  cosmicLines: 84,
-  fruitStorm:  72,
-  gemClusters: 60,
-  luckySevens: 120,
-};
-
-/** Per-variant palette. Each slot's backdrop matches the theme:
- *   fruitStorm   — Sweet-Bonanza candy land (pink/violet)
- *   cosmicLines  — deep violet night sky
- *   gemClusters  — teal jewel case
- *   luckySevens  — classic red/black arcade */
-interface VariantBg { top: number; well: number; wellBorder: number; cell: number; cellBorder: number; }
-const VARIANT_BG: Record<SlotVariant, VariantBg> = {
-  fruitStorm:  { top: 0x4e2aa4, well: 0x32127a, wellBorder: 0x9d6bff, cell: 0x2a0e66, cellBorder: 0xb08cff },
-  cosmicLines: { top: 0x1b1247, well: 0x0e0a2e, wellBorder: 0x6c5dd3, cell: 0x120a3a, cellBorder: 0x8478e5 },
-  gemClusters: { top: 0x0a3642, well: 0x062130, wellBorder: 0x36bac9, cell: 0x051a23, cellBorder: 0x4dd0e1 },
-  luckySevens: { top: 0x3a0b0b, well: 0x1a0404, wellBorder: 0xd94057, cell: 0x230606, cellBorder: 0xff7a87 },
-};
-// Reels "roll" during spin by cycling through a tall symbol strip — rollers
-// are kept in a vertical Container that is translated Y during the spin.
-const SPIN_STRIP_LEN = 8;  // symbols shown in the rolling blur
-
-/** Cached textures, loaded once per mount. Indexed by SymbolAssetKey. */
-type TexCache = Partial<Record<keyof typeof SYMBOL_ASSET_URLS, Texture>>;
-
-interface CellState {
-  container: Container;
-  sprite: Sprite;
-  glow: Graphics;
-  col: number;
-  row: number;
+/** Cell render state — grid[col][row]. */
+interface Cell {
   symbol: string;
+  /** "hit" pulses a gold glow; "pop" fades out on win; "drop-<ms>" applies
+   *  a CSS fall animation with the given delay. */
+  state?: "hit" | "pop" | "landing";
+  /** Optional animation delay in ms, used for staggered drops. */
+  delay?: number;
 }
 
-interface StageInternals {
-  app: Application;
-  host: HTMLDivElement;
-  grid: Container;
-  badgeLayer: Container;
-  cells: CellState[][];   // cells[col][row]
-  textures: TexCache;
-  cellSize: number;
-  cols: number;
-  rows: number;
-  lastToken: number;
-  running: boolean;
-  /** Abort flag flipped on unmount/new-spin so running tweens bail out. */
-  aborted: boolean;
-}
+/** Sleep helper for sequencing. */
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** Run the queued play if Pixi is ready AND we haven't already played this
- *  token. Safe to call at any time — from the React effect when deps
- *  change, and from the Pixi init tail when the app first becomes ready. */
-function tryPlay(
-  pendingRef: React.MutableRefObject<{ playToken: number; outcome: any | null }>,
-  internalsRef: React.MutableRefObject<StageInternals | null>,
-  variant: SlotVariant,
-  onComplete: () => void,
-  onEvent?: (e: SlotEvent) => void,
-): void {
-  const it = internalsRef.current;
-  const pending = pendingRef.current;
-  if (!it || !pending.outcome || it.lastToken === pending.playToken) return;
-  it.lastToken = pending.playToken;
-  it.aborted = false;
-  it.running = true;
-  const emit = onEvent ?? (() => {});
-  // Always fire "done" — even if the sequence throws — so the parent's
-  // pending placeBet() Promise resolves and the Spin button re-enables.
-  // Without this, one runtime error in any variant animator (e.g. a missing
-  // field on outcome) leaves the button stuck at "Spinning..." forever.
-  const finish = () => {
-    it.running = false;
-    try { onComplete(); } catch { /* ignore */ }
-    try { emit({ kind: "done" }); } catch { /* ignore */ }
-  };
-  playSequence(it, variant, pending.outcome, emit)
-    .then(finish)
-    .catch((err) => {
-      console.error("[SlotStage] playSequence failed", err);
-      finish();
-    });
-}
-
-/**
- * SlotStage — a Pixi-rendered slot reel grid. React owns the outcome; Pixi
- * owns the pixels. Plays the variant-specific animation sequence on every
- * bump of `playToken` and reports progress via `onEvent`.
- *
- * One stage handles all four slot variants: the animation choreography
- * branches on `variant` at the sequencing level, but the low-level
- * primitives (drop-in, pop, pulse, reel-spin) are shared.
- */
-export function SlotStage({
-  variant, cols, rows, outcome, playToken, onComplete, onEvent,
-}: SlotStageProps) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const internalsRef = useRef<StageInternals | null>(null);
-  /** Latest (playToken, outcome) the parent asked us to play. If Pixi init
-   *  hasn't finished when this updates we keep the request here; when init
-   *  completes it checks this ref and plays. */
-  const pendingPlayRef = useRef<{ playToken: number; outcome: any | null }>({
-    playToken: -1,
-    outcome: null,
-  });
-
-  // Mount Pixi + preload sprites once per (cols, rows) change. If the user
-  // navigates between variants with different grid sizes we tear down and
-  // rebuild — simpler than resizing.
-  useEffect(() => {
-    let cancelled = false;
-    const host = hostRef.current;
-    if (!host) return;
-
-    const cellSize = CELL_PX_FOR[variant];
-    const stageW = cols * cellSize + (cols - 1) * CELL_GAP + PAD * 2;
-    const stageH = rows * cellSize + (rows - 1) * CELL_GAP + PAD * 2;
-
-    const bg = VARIANT_BG[variant];
-    const app = new Application();
-    /** Pixi v8 adds a ResizePlugin by default which wires a window resize
-     *  listener. On component unmount its teardown calls `_cancelResize`,
-     *  which Vite tree-shakes out under minification and crashes with
-     *  "this._cancelResize is not a function". We never resize the canvas
-     *  from Pixi's side (CSS owns the layout), so we disable the plugin by
-     *  setting `resizeTo` to undefined AND also guard the destroy call to
-     *  only fire when renderer init completed. */
-    let initialized = false;
-    app
-      .init({
-        width: stageW,
-        height: stageH,
-        backgroundAlpha: 0, // CSS layer owns the gradient so it can animate
-        antialias: true,
-        resolution: Math.min(window.devicePixelRatio || 1, 2),
-        autoDensity: true,
-        // Do NOT pass resizeTo — leaving it undefined stops the ResizePlugin
-        // from attaching a window listener and avoids the destroy crash.
-      })
-      .then(async () => {
-        if (cancelled) return;
-        host.appendChild(app.canvas);
-        app.canvas.style.width = "100%";
-        app.canvas.style.height = "auto";
-        app.canvas.style.display = "block";
-        app.canvas.style.borderRadius = "18px";
-
-        // Preload every symbol texture. Some variants only need a subset but
-        // the total payload is ~17 KB of SVG so we load them all and cache.
-        // Assets.load() with a string[] returns a record keyed by URL string.
-        const loaded = (await Assets.load(Object.values(SYMBOL_ASSET_URLS))) as Record<string, Texture>;
-        if (cancelled) return;
-        const textures: TexCache = {};
-        for (const [k, url] of Object.entries(SYMBOL_ASSET_URLS)) {
-          // Assets.load resolves by the resolved href; look up both forms.
-          textures[k as keyof typeof SYMBOL_ASSET_URLS] =
-            loaded[url] ?? loaded[new URL(url, window.location.href).href];
-        }
-
-        // Painted backdrop: theme-appropriate colour for each variant. The
-        // reel well is a rounded rect with an inner shadow frame so the
-        // grid reads as a real slot machine chassis.
-        const backdrop = new Graphics()
-          .roundRect(0, 0, stageW, stageH, 18)
-          .fill({ color: bg.top });
-        app.stage.addChild(backdrop);
-
-        // Per-column reel well — subtle inset rectangles so each column looks
-        // like its own physical reel.
-        const reelWells = new Container();
-        reelWells.position.set(PAD, PAD);
-        for (let c = 0; c < cols; c++) {
-          const wellX = c * (cellSize + CELL_GAP) - CELL_GAP / 2;
-          const wellW = cellSize + CELL_GAP;
-          const wellH = rows * (cellSize + CELL_GAP) - CELL_GAP;
-          const g = new Graphics()
-            .roundRect(wellX, -CELL_GAP / 2, wellW, wellH + CELL_GAP, 12)
-            .fill({ color: bg.well, alpha: 0.65 })
-            .stroke({ color: bg.wellBorder, width: 2, alpha: 0.75 });
-          reelWells.addChild(g);
-        }
-        app.stage.addChild(reelWells);
-
-        // Grid container — centred with PAD inside the stage.
-        const grid = new Container();
-        grid.position.set(PAD, PAD);
-        app.stage.addChild(grid);
-
-        // Build the empty cell matrix.
-        const cells: CellState[][] = [];
-        for (let c = 0; c < cols; c++) {
-          cells[c] = [];
-          for (let r = 0; r < rows; r++) {
-            const cont = new Container();
-            cont.position.set(
-              c * (cellSize + CELL_GAP) + cellSize / 2,
-              r * (cellSize + CELL_GAP) + cellSize / 2,
-            );
-
-            // cell backdrop — translucent so the reel well gradient shows through
-            const cellBg = new Graphics()
-              .roundRect(-cellSize / 2 + 2, -cellSize / 2 + 2, cellSize - 4, cellSize - 4, 10)
-              .fill({ color: bg.cell, alpha: 0.5 })
-              .stroke({ color: bg.cellBorder, width: 1, alpha: 0.4 });
-            cont.addChild(cellBg);
-
-            // glow ring shown on wins (hidden by default)
-            const glow = new Graphics()
-              .roundRect(-cellSize / 2 + 2, -cellSize / 2 + 2, cellSize - 4, cellSize - 4, 10)
-              .stroke({ color: 0xffd34d, width: 4 });
-            glow.alpha = 0;
-            cont.addChild(glow);
-
-            const sprite = new Sprite();
-            sprite.anchor.set(0.5);
-            sprite.width = cellSize * 0.82;
-            sprite.height = cellSize * 0.82;
-            cont.addChild(sprite);
-
-            grid.addChild(cont);
-            cells[c]!.push({ container: cont, sprite, glow, col: c, row: r, symbol: "" });
-          }
-        }
-
-        // Badge layer sits on top for big-win splash effects.
-        const badgeLayer = new Container();
-        app.stage.addChild(badgeLayer);
-
-        internalsRef.current = {
-          app, host, grid, badgeLayer, cells, textures, cellSize,
-          cols, rows, lastToken: -1, running: false, aborted: false,
-        };
-        initialized = true;
-
-        // Paint an initial random board so the stage isn't empty on first load.
-        paintRandomBoard(internalsRef.current, variant);
-        // Drain any spin request that arrived during init.
-        tryPlay(pendingPlayRef, internalsRef, variant, onComplete, onEvent);
-      })
-      .catch((err) => console.error("[SlotStage] init failed", err));
-
-    return () => {
-      cancelled = true;
-      const it = internalsRef.current;
-      if (it) it.aborted = true;
-      internalsRef.current = null;
-      // Defer the Pixi destroy to a microtask so any throw inside
-      // ResizePlugin teardown doesn't surface as a React effect-cleanup
-      // error (which the ErrorBoundary would otherwise catch and unmount
-      // the whole app). The canvas's DOM node is removed below either way.
-      if (app.canvas?.parentNode) app.canvas.parentNode.removeChild(app.canvas);
-      if (!initialized) return;
-      queueMicrotask(() => {
-        try {
-          app.destroy(
-            { removeView: true },
-            { children: true, texture: false, textureSource: false },
-          );
-        } catch (err) {
-          console.warn("[SlotStage] destroy threw, ignoring", err);
-        }
-      });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cols, rows]);
-
-  // Every time playToken bumps with a non-null outcome, play the sequence.
-  // If Pixi init hasn't finished yet we stash the request in a pending ref
-  // and the init promise's tail will pick it up. Without this, a spin
-  // triggered during the first ~300ms of mount would silently do nothing
-  // and leave the parent's `rolling` state stuck on.
-  useEffect(() => {
-    pendingPlayRef.current = { playToken, outcome };
-    tryPlay(pendingPlayRef, internalsRef, variant, onComplete, onEvent);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playToken, outcome]);
-
-  return <div ref={hostRef} className="slots-stage-host" />;
-}
-
-// ─── cell helpers ───────────────────────────────────────────────────────────
-
-function setCell(it: StageInternals, col: number, row: number, symbol: string) {
-  const cell = it.cells[col]?.[row];
-  if (!cell) return;
-  cell.symbol = symbol;
-  const spec = specFor(symbol);
-  const tex = it.textures[spec.asset] ?? Texture.EMPTY;
-  cell.sprite.texture = tex;
-  cell.sprite.tint = spec.tint;
-  cell.sprite.alpha = 1;
-  cell.sprite.scale.set(bestScale(it.cellSize, tex));
-  cell.glow.alpha = 0;
-}
-
-function bestScale(cellSize: number, tex: Texture): number {
-  if (!tex || !tex.width) return 1;
-  const target = cellSize * 0.82;
-  return target / tex.width;
-}
-
-// Paint a random grid as the idle background (before any spin).
-function paintRandomBoard(it: StageInternals, variant: SlotVariant) {
-  const pool = variantPool(variant);
-  for (let c = 0; c < it.cols; c++) {
-    for (let r = 0; r < it.rows; r++) {
-      setCell(it, c, r, pool[(c * 7 + r * 3) % pool.length]!);
-    }
-  }
-}
-
+/** Variant pool — used to paint an idle grid before the first spin. */
 function variantPool(variant: SlotVariant): string[] {
   switch (variant) {
     case "cosmicLines": return ["cherry", "lemon", "bell", "star", "seven", "W"];
@@ -372,63 +57,154 @@ function variantPool(variant: SlotVariant): string[] {
   }
 }
 
-// ─── sequence: top-level dispatcher ────────────────────────────────────────
-
-async function playSequence(
-  it: StageInternals,
-  variant: SlotVariant,
-  outcome: any,
-  emit: (e: SlotEvent) => void,
-): Promise<void> {
-  emit({ kind: "spin-start" });
-  switch (variant) {
-    case "cosmicLines": return playCosmicLines(it, outcome, emit);
-    case "fruitStorm":  return playFruitStorm(it, outcome, emit);
-    case "gemClusters": return playGemClusters(it, outcome, emit);
-    case "luckySevens": return playLuckySevens(it, outcome, emit);
-  }
-}
-
-// ─── cosmic lines: classic reel spin ────────────────────────────────────────
-
-async function playCosmicLines(
-  it: StageInternals,
-  outcome: any,
-  emit: (e: SlotEvent) => void,
-): Promise<void> {
-  const finalGrid: string[][] = outcome.baseSpin.grid;
-  await spinReels(it, finalGrid, emit);
-  if (it.aborted) return;
-  // Highlight scatters first, then paylines.
-  const scatters: Array<[number, number]> = [];
-  for (let c = 0; c < it.cols; c++) {
-    for (let r = 0; r < it.rows; r++) {
-      if (finalGrid[c]![r] === "S") scatters.push([c, r]);
+/** Paint a deterministic starting grid so the stage isn't empty before a spin. */
+function idleGrid(variant: SlotVariant, cols: number, rows: number): Cell[][] {
+  const pool = variantPool(variant);
+  const g: Cell[][] = [];
+  for (let c = 0; c < cols; c++) {
+    g.push([]);
+    for (let r = 0; r < rows; r++) {
+      g[c]!.push({ symbol: pool[(c * 7 + r * 3) % pool.length]! });
     }
   }
-  if (scatters.length >= 3) {
-    await pulseCells(it, scatters, 0x3ecf8e, 300);
-    emit({ kind: "win-pop", count: scatters.length });
-  }
-  for (const w of outcome.baseSpin.lineWins ?? []) {
-    if (it.aborted) return;
-    const line = PAYLINES_CL[w.lineIndex] ?? [];
-    const hit = line.slice(0, w.count);
-    await pulseCells(it, hit, 0xf5b544, 280);
-    emit({ kind: "win-pop", count: w.count });
-  }
-  // Free-spin sequence: each free spin is a full re-spin with a gold tint.
-  for (const spin of outcome.freeSpins ?? []) {
-    if (it.aborted) return;
-    await delay(it.app.ticker, 200);
-    await spinReels(it, spin.grid, emit);
-    for (const w of spin.lineWins ?? []) {
-      const line = PAYLINES_CL[w.lineIndex] ?? [];
-      await pulseCells(it, line.slice(0, w.count), 0xf5b544, 240);
-    }
-  }
-  if (outcome.baseSpin.multiplier >= 20) emit({ kind: "big-win", multiplier: outcome.baseSpin.multiplier });
+  return g;
 }
+
+/** Deep-clone grid (mutation-safe for state updates). */
+function cloneGrid(g: Cell[][]): Cell[][] {
+  return g.map((col) => col.map((cell) => ({ ...cell })));
+}
+
+export function SlotStage({
+  variant, cols, rows, outcome, playToken, onComplete, onEvent,
+}: SlotStageProps) {
+  const [grid, setGrid] = useState<Cell[][]>(() => idleGrid(variant, cols, rows));
+  const gridRef = useRef(grid);
+  gridRef.current = grid;
+  const lastTokenRef = useRef<number>(-1);
+  const abortRef = useRef<boolean>(false);
+  // Preload all sprite images so the first spin doesn't flash blank cells.
+  // This is cheap — 15 SVGs at ~1-2KB each.
+  useEffect(() => {
+    for (const url of Object.values(SYMBOL_ASSET_URLS)) {
+      const img = new Image();
+      img.src = url;
+    }
+  }, []);
+
+  // Reset the grid when variant/cols/rows change (so switching slots is clean).
+  useEffect(() => {
+    setGrid(idleGrid(variant, cols, rows));
+    lastTokenRef.current = -1;
+    abortRef.current = false;
+  }, [variant, cols, rows]);
+
+  useEffect(() => {
+    return () => { abortRef.current = true; };
+  }, []);
+
+  // Run a sequence whenever playToken advances with a non-null outcome.
+  useEffect(() => {
+    if (outcome == null) return;
+    if (lastTokenRef.current === playToken) return;
+    lastTokenRef.current = playToken;
+    abortRef.current = false;
+
+    const emit = onEvent ?? (() => {});
+    emit({ kind: "spin-start" });
+
+    const finish = () => {
+      try { onComplete(); } catch { /* ignore */ }
+      try { emit({ kind: "done" }); } catch { /* ignore */ }
+    };
+
+    const setGridSafe = (updater: Cell[][] | ((prev: Cell[][]) => Cell[][])) => {
+      if (abortRef.current) return;
+      if (typeof updater === "function") setGrid((prev) => (updater as any)(prev));
+      else setGrid(updater);
+    };
+
+    (async () => {
+      try {
+        switch (variant) {
+          case "cosmicLines":
+            await runCosmicLines(outcome, cols, rows, setGridSafe, emit, abortRef);
+            break;
+          case "fruitStorm":
+            await runTumble(outcome, cols, rows, setGridSafe, emit, abortRef, false);
+            break;
+          case "gemClusters":
+            await runClusters(outcome, cols, rows, setGridSafe, emit, abortRef);
+            break;
+          case "luckySevens":
+            await runLuckySevens(outcome, cols, rows, setGridSafe, emit, abortRef);
+            break;
+        }
+      } catch (err) {
+        console.error("[SlotStage] sequence failed", err);
+      } finally {
+        finish();
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playToken, outcome]);
+
+  return (
+    <div
+      className={`slots-dom slots-dom-${variant}`}
+      style={{
+        gridTemplateColumns: `repeat(${cols}, 1fr)`,
+        gridTemplateRows: `repeat(${rows}, 1fr)`,
+      } as React.CSSProperties}
+    >
+      {Array.from({ length: rows }).map((_, r) =>
+        Array.from({ length: cols }).map((_, c) => {
+          const cell = grid[c]?.[r];
+          if (!cell) return null;
+          const spec = specFor(cell.symbol);
+          const url = SYMBOL_ASSET_URLS[spec.asset];
+          const stateClass = cell.state ? `is-${cell.state}` : "";
+          const tintRgb = hexToCssColor(spec.tint);
+          return (
+            <div
+              key={`${c}-${r}`}
+              className={`slots-dom-cell ${stateClass}`}
+              style={{
+                gridColumn: c + 1,
+                gridRow: r + 1,
+                animationDelay: cell.delay ? `${cell.delay}ms` : undefined,
+                // Store the tint via a CSS var so Gem Clusters can tint the
+                // same gem.svg for each colour via a CSS filter.
+                ["--tint" as any]: tintRgb,
+              }}
+            >
+              <img
+                src={url}
+                alt={spec.label}
+                className={`slots-dom-sym ${spec.asset === "gem" ? "is-tinted" : ""}`}
+                draggable={false}
+              />
+            </div>
+          );
+        }),
+      )}
+    </div>
+  );
+}
+
+/** Convert 0xRRGGBB hex → "rgb(r,g,b)" string for CSS custom-property use. */
+function hexToCssColor(hex: number): string {
+  const r = (hex >> 16) & 0xff;
+  const g = (hex >> 8) & 0xff;
+  const b = hex & 0xff;
+  return `rgb(${r},${g},${b})`;
+}
+
+// ─── sequences ─────────────────────────────────────────────────────────────
+
+type SetGrid = (updater: Cell[][] | ((prev: Cell[][]) => Cell[][])) => void;
+type EmitFn = (e: SlotEvent) => void;
+type AbortRef = { current: boolean };
 
 const PAYLINES_CL: [number, number][][] = [
   [[0,1],[1,1],[2,1],[3,1],[4,1]],
@@ -442,317 +218,6 @@ const PAYLINES_CL: [number, number][][] = [
   [[0,2],[1,2],[2,1],[3,0],[4,0]],
   [[0,1],[1,2],[2,1],[3,0],[4,1]],
 ];
-
-// Classic 5-reel column spin. Each column spins independently, accelerating
-// for 200ms, cruising 300ms while the strip blurs by, then decelerating
-// into the final symbols with an easeOutBack overshoot.
-async function spinReels(
-  it: StageInternals,
-  finalGrid: string[][],
-  emit: (e: SlotEvent) => void,
-): Promise<void> {
-  const perColStagger = 80;
-  const accel = 200;
-  const cruise = 300;
-  const decel = 450;
-  const pool = variantPoolFromGrid(finalGrid);
-  const col$: Promise<void>[] = [];
-
-  for (let c = 0; c < it.cols; c++) {
-    const p = (async () => {
-      await delay(it.app.ticker, c * perColStagger);
-      // Cycle filler symbols for "cruise" phase.
-      const fillerFrames = Math.ceil((accel + cruise) / 40);
-      for (let f = 0; f < fillerFrames; f++) {
-        for (let r = 0; r < it.rows; r++) {
-          setCell(it, c, r, pool[(f + c + r) % pool.length]!);
-        }
-        await delay(it.app.ticker, 40);
-      }
-      // Land on final symbols with a short Y-wobble.
-      for (let r = 0; r < it.rows; r++) {
-        setCell(it, c, r, finalGrid[c]![r]!);
-      }
-      const colContainer = it.cells[c]!.map((cs) => cs.container);
-      await Promise.all(colContainer.map((cont, r) => {
-        const restY = r * (it.cellSize + CELL_GAP) + it.cellSize / 2;
-        cont.position.y = restY - 40;
-        return tween(it.app.ticker, {
-          from: restY - 40,
-          to: restY,
-          duration: decel,
-          ease: easeOutBack,
-          onUpdate: (v) => { cont.position.y = v; },
-        });
-      }));
-      emit({ kind: "reel-land", col: c });
-    })();
-    col$.push(p);
-  }
-  await Promise.all(col$);
-}
-
-function variantPoolFromGrid(grid: string[][]): string[] {
-  const seen = new Set<string>();
-  for (const col of grid) for (const s of col) seen.add(s);
-  return [...seen];
-}
-
-// Pulse a set of cells: scale up → down, with glow ring flashing.
-async function pulseCells(
-  it: StageInternals,
-  cells: [number, number][],
-  color: number,
-  duration: number,
-): Promise<void> {
-  await Promise.all(cells.map(([c, r]) => pulseOne(it, c, r, color, duration)));
-}
-
-async function pulseOne(
-  it: StageInternals, col: number, row: number, color: number, duration: number,
-): Promise<void> {
-  const cell = it.cells[col]?.[row];
-  if (!cell) return;
-  cell.glow.tint = color;
-  const baseScale = cell.sprite.scale.x;
-  await tween(it.app.ticker, {
-    from: 0, to: 1, duration: duration / 2, ease: easeOutCubic,
-    onUpdate: (p) => {
-      cell.glow.alpha = p;
-      cell.sprite.scale.set(baseScale * (1 + 0.15 * p));
-    },
-  });
-  await tween(it.app.ticker, {
-    from: 1, to: 0, duration: duration / 2, ease: easeInOutCubic,
-    onUpdate: (p) => {
-      cell.glow.alpha = p;
-      cell.sprite.scale.set(baseScale * (1 + 0.15 * p));
-    },
-  });
-}
-
-// ─── fruit storm: pay-anywhere tumble ───────────────────────────────────────
-
-async function playFruitStorm(
-  it: StageInternals,
-  outcome: any,
-  emit: (e: SlotEvent) => void,
-): Promise<void> {
-  await playTumbleSpin(it, outcome.baseSpin, emit);
-  for (const fs of outcome.freeSpins ?? []) {
-    if (it.aborted) return;
-    await delay(it.app.ticker, 250);
-    // Free-spin tint glow on the whole grid briefly
-    await flashBorder(it, 0xffd34d, 280);
-    await playTumbleSpin(it, fs, emit);
-  }
-  if (outcome.totalMultiplier >= 20) {
-    emit({ kind: "big-win", multiplier: outcome.totalMultiplier });
-  }
-}
-
-async function playTumbleSpin(
-  it: StageInternals,
-  spin: { tumbleSteps: { grid: string[][]; clearedPositions: [number, number][]; stepPay: number }[] },
-  emit: (e: SlotEvent) => void,
-): Promise<void> {
-  if (!spin.tumbleSteps.length) return;
-  const firstGrid = spin.tumbleSteps[0]!.grid;
-  await dropIntoGrid(it, firstGrid);
-  if (it.aborted) return;
-  for (let step = 0; step < spin.tumbleSteps.length; step++) {
-    if (it.aborted) return;
-    const s = spin.tumbleSteps[step]!;
-    if (s.clearedPositions.length === 0) break;
-    await pulseCells(it, s.clearedPositions, 0xf5b544, 260);
-    await popCells(it, s.clearedPositions);
-    emit({ kind: "win-pop", count: s.clearedPositions.length });
-    emit({ kind: "tumble" });
-    // Refill: next step grid shows the new state (if there is one).
-    const nextGrid = spin.tumbleSteps[step + 1]?.grid ?? null;
-    if (nextGrid) await cascadeTo(it, s.clearedPositions, nextGrid);
-  }
-}
-
-/** Dropping-in effect for an entire grid: each cell falls from above with
- *  a staggered delay, lands with easeOutBounce. */
-async function dropIntoGrid(it: StageInternals, grid: string[][]): Promise<void> {
-  const jobs: Promise<void>[] = [];
-  for (let c = 0; c < it.cols; c++) {
-    for (let r = 0; r < it.rows; r++) {
-      const cell = it.cells[c]![r]!;
-      setCell(it, c, r, grid[c]![r]!);
-      const restY = r * (it.cellSize + CELL_GAP) + it.cellSize / 2;
-      cell.container.position.y = restY - it.cellSize * (it.rows + 1);
-      const stagger = c * 30 + r * 20;
-      jobs.push(tween(it.app.ticker, {
-        from: cell.container.position.y,
-        to: restY,
-        duration: 420,
-        delay: stagger,
-        ease: easeOutBounce,
-        onUpdate: (v) => { cell.container.position.y = v; },
-      }));
-    }
-  }
-  await Promise.all(jobs);
-}
-
-/** Pop: scale up while fading alpha to 0, leaving an empty slot visually. */
-async function popCells(it: StageInternals, cells: [number, number][]): Promise<void> {
-  await Promise.all(cells.map(async ([c, r]) => {
-    const cell = it.cells[c]?.[r];
-    if (!cell) return;
-    const baseScale = bestScale(it.cellSize, cell.sprite.texture);
-    await tween(it.app.ticker, {
-      from: 0, to: 1, duration: 220, ease: easeInCubic,
-      onUpdate: (p) => {
-        cell.sprite.scale.set(baseScale * (1 + 0.5 * p));
-        cell.sprite.alpha = 1 - p;
-        cell.glow.alpha = Math.max(0, (1 - p) * 0.6);
-      },
-    });
-    cell.sprite.alpha = 0;
-    cell.glow.alpha = 0;
-  }));
-}
-
-/** After a pop, slide remaining symbols into cleared slots and drop fresh
- *  symbols from above. For simplicity we just swap textures to `nextGrid`
- *  and replay the drop animation per-column for cells that changed. */
-async function cascadeTo(
-  it: StageInternals, cleared: [number, number][], nextGrid: string[][],
-): Promise<void> {
-  // Track which columns had a clear (they need re-animation).
-  const cols = new Set(cleared.map(([c]) => c));
-  const jobs: Promise<void>[] = [];
-  for (const c of cols) {
-    for (let r = 0; r < it.rows; r++) {
-      const cell = it.cells[c]![r]!;
-      if (cell.symbol === nextGrid[c]![r] && cell.sprite.alpha > 0.01) continue;
-      setCell(it, c, r, nextGrid[c]![r]!);
-      const restY = r * (it.cellSize + CELL_GAP) + it.cellSize / 2;
-      cell.container.position.y = restY - it.cellSize * (it.rows + 1);
-      const stagger = r * 20;
-      jobs.push(tween(it.app.ticker, {
-        from: cell.container.position.y,
-        to: restY,
-        duration: 360,
-        delay: stagger,
-        ease: easeOutBounce,
-        onUpdate: (v) => { cell.container.position.y = v; },
-      }));
-    }
-  }
-  // Cells in OTHER columns may still have new symbols (board re-rolls); sync them quickly.
-  for (let c = 0; c < it.cols; c++) {
-    if (cols.has(c)) continue;
-    for (let r = 0; r < it.rows; r++) {
-      if (it.cells[c]![r]!.symbol !== nextGrid[c]![r]) {
-        setCell(it, c, r, nextGrid[c]![r]!);
-      }
-    }
-  }
-  await Promise.all(jobs);
-}
-
-// Brief border flash to signal free-spin mode.
-async function flashBorder(it: StageInternals, color: number, ms: number): Promise<void> {
-  const border = new Graphics()
-    .roundRect(0, 0, it.app.screen.width, it.app.screen.height, 12)
-    .stroke({ color, width: 4 });
-  border.alpha = 0;
-  it.badgeLayer.addChild(border);
-  await tween(it.app.ticker, {
-    from: 0, to: 1, duration: ms / 2, onUpdate: (p) => { border.alpha = p; },
-  });
-  await tween(it.app.ticker, {
-    from: 1, to: 0, duration: ms / 2, onUpdate: (p) => { border.alpha = p; },
-  });
-  border.destroy();
-}
-
-// ─── gem clusters ───────────────────────────────────────────────────────────
-
-async function playGemClusters(
-  it: StageInternals,
-  outcome: any,
-  emit: (e: SlotEvent) => void,
-): Promise<void> {
-  const steps: { grid: string[][]; clusters: { cells: [number, number][] }[]; stepPay: number }[] = outcome.steps;
-  if (!steps.length) return;
-  await dropIntoGrid(it, steps[0]!.grid);
-  for (let i = 0; i < steps.length; i++) {
-    if (it.aborted) return;
-    const s = steps[i]!;
-    if (!s.clusters.length) break;
-    for (const k of s.clusters) {
-      await pulseCells(it, k.cells, 0xf5b544, 260);
-      emit({ kind: "win-pop", count: k.cells.length });
-    }
-    const cleared: [number, number][] = [];
-    for (const k of s.clusters) cleared.push(...k.cells);
-    await popCells(it, cleared);
-    emit({ kind: "tumble" });
-    const nextGrid = steps[i + 1]?.grid;
-    if (nextGrid) await cascadeTo(it, cleared, nextGrid);
-  }
-  if (outcome.multiplier >= 20) emit({ kind: "big-win", multiplier: outcome.multiplier });
-}
-
-// ─── lucky sevens ───────────────────────────────────────────────────────────
-
-async function playLuckySevens(
-  it: StageInternals,
-  outcome: any,
-  emit: (e: SlotEvent) => void,
-): Promise<void> {
-  const steps: { grid: string[][]; lockedSevens: [number, number][] }[] = outcome.steps;
-  if (!steps.length) return;
-  // Spin all reels into the first grid.
-  await spinReels(it, steps[0]!.grid, emit);
-  // For each subsequent step, keep locked sevens, re-spin the rest.
-  for (let i = 1; i < steps.length; i++) {
-    if (it.aborted) return;
-    const step = steps[i]!;
-    const locked = new Set(step.lockedSevens.map(([c, r]) => `${c},${r}`));
-    // Glow the locked cells gold.
-    await pulseCells(it, step.lockedSevens, 0xffd34d, 220);
-    emit({ kind: "tumble" });
-    // Re-spin only non-locked cells (one column at a time).
-    for (let c = 0; c < it.cols; c++) {
-      const jobs: Promise<void>[] = [];
-      for (let r = 0; r < it.rows; r++) {
-        if (locked.has(`${c},${r}`)) continue;
-        const cell = it.cells[c]![r]!;
-        const restY = r * (it.cellSize + CELL_GAP) + it.cellSize / 2;
-        setCell(it, c, r, step.grid[c]![r]!);
-        cell.container.position.y = restY - it.cellSize * (it.rows + 1);
-        jobs.push(tween(it.app.ticker, {
-          from: cell.container.position.y, to: restY,
-          duration: 420, delay: c * 60 + r * 20,
-          ease: easeOutBounce,
-          onUpdate: (v) => { cell.container.position.y = v; },
-        }));
-      }
-      await Promise.all(jobs);
-    }
-  }
-  // Highlight final payline wins.
-  const lineWins = outcome.lineWins ?? [];
-  for (const w of lineWins) {
-    if (it.aborted) return;
-    const line = PAYLINES_LS[w.lineIndex] ?? [];
-    await pulseCells(it, line, 0xf5b544, 260);
-    emit({ kind: "win-pop", count: w.count });
-  }
-  if (outcome.jackpot) {
-    emit({ kind: "big-win", multiplier: outcome.multiplier });
-    // Gold wash for the jackpot.
-    await flashBorder(it, 0xffd34d, 600);
-  }
-}
-
 const PAYLINES_LS: [number, number][][] = [
   [[0,0],[1,0],[2,0]],
   [[0,1],[1,1],[2,1]],
@@ -761,5 +226,322 @@ const PAYLINES_LS: [number, number][][] = [
   [[0,2],[1,1],[2,0]],
 ];
 
-// Keep Ticker typing accessible for IDEs. No-op at runtime.
-export type { Ticker };
+// Reel spin: each column staggered, filler symbols cycle, then final grid.
+async function reelSpin(
+  finalGrid: string[][], cols: number, rows: number, variant: SlotVariant,
+  setGrid: SetGrid, emit: EmitFn, abortRef: AbortRef,
+): Promise<void> {
+  const pool = variantPool(variant);
+  const perColStagger = 120;
+  const cruiseMs = 500;
+  const framesPerCol = 6;
+
+  // Phase 1: cruise — fill each column's cells with rotating symbols.
+  for (let f = 0; f < framesPerCol; f++) {
+    if (abortRef.current) return;
+    setGrid((prev) => {
+      const g = cloneGrid(prev);
+      for (let c = 0; c < cols; c++) {
+        if (f < (cols - c)) continue; // earlier columns start later? actually reverse order
+        for (let r = 0; r < rows; r++) {
+          g[c]![r] = { symbol: pool[(f + c * 2 + r) % pool.length]! };
+        }
+      }
+      return g;
+    });
+    await wait(cruiseMs / framesPerCol);
+  }
+
+  // Phase 2: each column lands in sequence.
+  for (let c = 0; c < cols; c++) {
+    if (abortRef.current) return;
+    setGrid((prev) => {
+      const g = cloneGrid(prev);
+      for (let r = 0; r < rows; r++) {
+        g[c]![r] = { symbol: finalGrid[c]![r]!, state: "landing", delay: r * 50 };
+      }
+      return g;
+    });
+    emit({ kind: "reel-land", col: c });
+    await wait(perColStagger);
+  }
+  // Let the landing anim finish.
+  await wait(300);
+  setGrid((prev) => {
+    const g = cloneGrid(prev);
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        g[c]![r]!.state = undefined;
+        g[c]![r]!.delay = undefined;
+      }
+    }
+    return g;
+  });
+}
+
+// Pulse then pop a set of cells.
+async function pulseAndPop(
+  cells: [number, number][], setGrid: SetGrid, emit: EmitFn, abortRef: AbortRef,
+): Promise<void> {
+  if (cells.length === 0) return;
+  // Pulse
+  setGrid((prev) => {
+    const g = cloneGrid(prev);
+    for (const [c, r] of cells) {
+      if (g[c]?.[r]) g[c]![r]!.state = "hit";
+    }
+    return g;
+  });
+  emit({ kind: "win-pop", count: cells.length });
+  await wait(450);
+  if (abortRef.current) return;
+  // Pop
+  setGrid((prev) => {
+    const g = cloneGrid(prev);
+    for (const [c, r] of cells) {
+      if (g[c]?.[r]) g[c]![r]!.state = "pop";
+    }
+    return g;
+  });
+  emit({ kind: "tumble" });
+  await wait(300);
+}
+
+// Drop an entire grid from above with staggered delay.
+async function dropGrid(
+  newGrid: string[][], setGrid: SetGrid, _cols: number, _rows: number,
+): Promise<void> {
+  setGrid(() => {
+    const g: Cell[][] = [];
+    for (let c = 0; c < newGrid.length; c++) {
+      g.push([]);
+      for (let r = 0; r < newGrid[c]!.length; r++) {
+        g[c]!.push({
+          symbol: newGrid[c]![r]!,
+          state: "landing",
+          delay: c * 40 + r * 30,
+        });
+      }
+    }
+    return g;
+  });
+  // Longest stagger ≈ (cols * 40 + rows * 30) + 450 anim duration
+  const maxStagger = newGrid.length * 40 + (newGrid[0]?.length ?? 1) * 30;
+  await wait(maxStagger + 500);
+  // Clear landing state so cells are ready for next action
+  setGrid((prev) => {
+    const g = cloneGrid(prev);
+    for (const col of g) for (const cell of col) { cell.state = undefined; cell.delay = undefined; }
+    return g;
+  });
+}
+
+// Refill cleared cells from above (used in tumble mechanic).
+async function refillGrid(
+  nextGrid: string[][], setGrid: SetGrid,
+): Promise<void> {
+  setGrid((prev) => {
+    const g = cloneGrid(prev);
+    for (let c = 0; c < nextGrid.length; c++) {
+      for (let r = 0; r < nextGrid[c]!.length; r++) {
+        const cur = g[c]![r]!;
+        if (cur.symbol !== nextGrid[c]![r] || cur.state === "pop") {
+          g[c]![r] = {
+            symbol: nextGrid[c]![r]!,
+            state: "landing",
+            delay: r * 30,
+          };
+        }
+      }
+    }
+    return g;
+  });
+  const maxStagger = (nextGrid[0]?.length ?? 1) * 30;
+  await wait(maxStagger + 450);
+  setGrid((prev) => {
+    const g = cloneGrid(prev);
+    for (const col of g) for (const cell of col) { cell.state = undefined; cell.delay = undefined; }
+    return g;
+  });
+}
+
+async function runCosmicLines(
+  outcome: any, cols: number, rows: number,
+  setGrid: SetGrid, emit: EmitFn, abortRef: AbortRef,
+): Promise<void> {
+  await reelSpin(outcome.baseSpin.grid, cols, rows, "cosmicLines", setGrid, emit, abortRef);
+  if (abortRef.current) return;
+  // Scatters first
+  const scatters: [number, number][] = [];
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      if (outcome.baseSpin.grid[c]?.[r] === "S") scatters.push([c, r]);
+    }
+  }
+  if (scatters.length >= 3) {
+    await pulseAndPop(scatters, setGrid, emit, abortRef);
+    // Repaint (scatters shouldn't actually vanish in lines slot)
+    setGrid(() => {
+      const g = cloneGrid(idleGrid("cosmicLines", cols, rows));
+      for (let c = 0; c < cols; c++)
+        for (let r = 0; r < rows; r++)
+          g[c]![r] = { symbol: outcome.baseSpin.grid[c]![r]! };
+      return g;
+    });
+  }
+  for (const w of outcome.baseSpin.lineWins ?? []) {
+    if (abortRef.current) return;
+    const line = PAYLINES_CL[w.lineIndex] ?? [];
+    const hit = line.slice(0, w.count);
+    setGrid((prev) => {
+      const g = cloneGrid(prev);
+      for (const [c, r] of hit) if (g[c]?.[r]) g[c]![r]!.state = "hit";
+      return g;
+    });
+    emit({ kind: "win-pop", count: w.count });
+    await wait(400);
+    setGrid((prev) => {
+      const g = cloneGrid(prev);
+      for (const [c, r] of hit) if (g[c]?.[r]) g[c]![r]!.state = undefined;
+      return g;
+    });
+  }
+  for (const spin of outcome.freeSpins ?? []) {
+    if (abortRef.current) return;
+    await wait(200);
+    await reelSpin(spin.grid, cols, rows, "cosmicLines", setGrid, emit, abortRef);
+    for (const w of spin.lineWins ?? []) {
+      if (abortRef.current) return;
+      const line = PAYLINES_CL[w.lineIndex] ?? [];
+      const hit = line.slice(0, w.count);
+      setGrid((prev) => {
+        const g = cloneGrid(prev);
+        for (const [c, r] of hit) if (g[c]?.[r]) g[c]![r]!.state = "hit";
+        return g;
+      });
+      await wait(360);
+      setGrid((prev) => {
+        const g = cloneGrid(prev);
+        for (const [c, r] of hit) if (g[c]?.[r]) g[c]![r]!.state = undefined;
+        return g;
+      });
+    }
+  }
+  if (outcome.baseSpin.multiplier >= 20) {
+    emit({ kind: "big-win", multiplier: outcome.baseSpin.multiplier });
+  }
+}
+
+async function runTumble(
+  outcome: any, cols: number, rows: number,
+  setGrid: SetGrid, emit: EmitFn, abortRef: AbortRef, _isGemVariant: boolean,
+): Promise<void> {
+  await playTumbleSpin(outcome.baseSpin, setGrid, emit, abortRef);
+  for (const fs of outcome.freeSpins ?? []) {
+    if (abortRef.current) return;
+    await wait(250);
+    await playTumbleSpin(fs, setGrid, emit, abortRef);
+  }
+  if ((outcome.totalMultiplier ?? 0) >= 20) {
+    emit({ kind: "big-win", multiplier: outcome.totalMultiplier });
+  }
+}
+
+async function playTumbleSpin(
+  spin: { tumbleSteps: { grid: string[][]; clearedPositions: [number, number][]; stepPay: number }[] },
+  setGrid: SetGrid, emit: EmitFn, abortRef: AbortRef,
+): Promise<void> {
+  if (!spin?.tumbleSteps?.length) return;
+  await dropGrid(spin.tumbleSteps[0]!.grid, setGrid, 0, 0);
+  for (let i = 0; i < spin.tumbleSteps.length; i++) {
+    if (abortRef.current) return;
+    const s = spin.tumbleSteps[i]!;
+    if (!s.clearedPositions?.length) break;
+    await pulseAndPop(s.clearedPositions, setGrid, emit, abortRef);
+    const nextGrid = spin.tumbleSteps[i + 1]?.grid;
+    if (nextGrid) await refillGrid(nextGrid, setGrid);
+  }
+}
+
+async function runClusters(
+  outcome: any, _cols: number, _rows: number,
+  setGrid: SetGrid, emit: EmitFn, abortRef: AbortRef,
+): Promise<void> {
+  const steps = outcome.steps ?? [];
+  if (!steps.length) return;
+  await dropGrid(steps[0].grid, setGrid, 0, 0);
+  for (let i = 0; i < steps.length; i++) {
+    if (abortRef.current) return;
+    const s = steps[i];
+    if (!s.clusters?.length) break;
+    const cleared: [number, number][] = [];
+    for (const k of s.clusters) for (const cell of k.cells) cleared.push(cell);
+    await pulseAndPop(cleared, setGrid, emit, abortRef);
+    const nextGrid = steps[i + 1]?.grid;
+    if (nextGrid) await refillGrid(nextGrid, setGrid);
+  }
+  if ((outcome.multiplier ?? 0) >= 20) {
+    emit({ kind: "big-win", multiplier: outcome.multiplier });
+  }
+}
+
+async function runLuckySevens(
+  outcome: any, cols: number, rows: number,
+  setGrid: SetGrid, emit: EmitFn, abortRef: AbortRef,
+): Promise<void> {
+  const steps = outcome.steps ?? [];
+  if (!steps.length) return;
+  await reelSpin(steps[0].grid, cols, rows, "luckySevens", setGrid, emit, abortRef);
+  for (let i = 1; i < steps.length; i++) {
+    if (abortRef.current) return;
+    const step = steps[i];
+    // Pulse the locked sevens
+    const locked = new Set(step.lockedSevens.map(([c, r]: [number, number]) => `${c},${r}`));
+    setGrid((prev) => {
+      const g = cloneGrid(prev);
+      for (const [c, r] of step.lockedSevens) if (g[c]?.[r]) g[c]![r]!.state = "hit";
+      return g;
+    });
+    await wait(300);
+    // Re-spin non-locked cells
+    setGrid((prev) => {
+      const g = cloneGrid(prev);
+      for (let c = 0; c < cols; c++) {
+        for (let r = 0; r < rows; r++) {
+          if (locked.has(`${c},${r}`)) continue;
+          g[c]![r] = {
+            symbol: step.grid[c][r],
+            state: "landing",
+            delay: c * 80 + r * 40,
+          };
+        }
+      }
+      return g;
+    });
+    await wait(700);
+    setGrid((prev) => {
+      const g = cloneGrid(prev);
+      for (const col of g) for (const cell of col) { cell.state = undefined; cell.delay = undefined; }
+      return g;
+    });
+    emit({ kind: "tumble" });
+  }
+  // Final line wins
+  for (const w of outcome.lineWins ?? []) {
+    if (abortRef.current) return;
+    const line = PAYLINES_LS[w.lineIndex] ?? [];
+    setGrid((prev) => {
+      const g = cloneGrid(prev);
+      for (const [c, r] of line) if (g[c]?.[r]) g[c]![r]!.state = "hit";
+      return g;
+    });
+    emit({ kind: "win-pop", count: w.count });
+    await wait(500);
+    setGrid((prev) => {
+      const g = cloneGrid(prev);
+      for (const [c, r] of line) if (g[c]?.[r]) g[c]![r]!.state = undefined;
+      return g;
+    });
+  }
+  if (outcome.jackpot) emit({ kind: "big-win", multiplier: outcome.multiplier });
+}

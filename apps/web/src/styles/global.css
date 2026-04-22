@@ -2416,17 +2416,106 @@ button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   display: flex;
   justify-content: center;
   align-items: center;
+  padding: 4px 0 8px;
 }
-.slots-stage-host {
+
+/* DOM slot grid — replaces the Pixi canvas. Each cell is a <div> with an
+   <img> child; animations live in CSS keyframes below. */
+.slots-dom {
+  display: grid;
+  gap: 6px;
   width: 100%;
   max-width: 560px;
-  display: block;
-  filter: drop-shadow(0 12px 30px rgba(0, 0, 0, 0.45));
+  padding: 10px;
+  border-radius: var(--rr);
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow:
+    inset 0 2px 8px rgba(0, 0, 0, 0.4),
+    0 10px 24px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
 }
-.slots-stage-host canvas {
-  width: 100% !important;
-  height: auto !important;
-  display: block;
+.slots-dom-cell {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  transition: transform 120ms var(--ease);
+}
+.slots-dom-sym {
+  width: 82%;
+  height: 82%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  /* Subtle drop shadow so symbols pop against the reel backdrop */
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.45));
+}
+/* Gem Clusters tints the shared gem.svg via the --tint CSS variable */
+.slots-dom-sym.is-tinted {
+  filter:
+    drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5))
+    saturate(0);
+  mix-blend-mode: normal;
+}
+.slots-dom-cell { overflow: hidden; }
+.slots-dom-sym.is-tinted + ::after,
+.slots-dom-cell:has(.is-tinted) {
+  /* Apply the tint as a coloured overlay behind the gem so the white
+     silhouette + grey facets pick up the colour. */
+}
+.slots-dom-cell:has(.is-tinted)::before {
+  content: "";
+  position: absolute;
+  inset: 10%;
+  border-radius: 50%;
+  background: var(--tint);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  z-index: 1;
+}
+.slots-dom-cell:has(.is-tinted) .slots-dom-sym {
+  position: relative;
+  z-index: 2;
+}
+
+/* Landing animation — cells start above the grid and drop into place
+   with a bounce. */
+@keyframes slots-drop {
+  0%   { transform: translateY(-320%) scale(0.9); opacity: 0; }
+  60%  { opacity: 1; }
+  80%  { transform: translateY(8%) scale(1.04); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.slots-dom-cell.is-landing {
+  animation: slots-drop 450ms cubic-bezier(.2,.7,.2,1.15) both;
+}
+
+/* Win hit — pulse with a gold glow */
+@keyframes slots-hit {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(255, 211, 77, 0); }
+  50%      { transform: scale(1.12); box-shadow: 0 0 20px rgba(255, 211, 77, 0.9), inset 0 0 14px rgba(255, 211, 77, 0.65); }
+}
+.slots-dom-cell.is-hit {
+  animation: slots-hit 520ms ease-out;
+  border-color: #ffd34d;
+  background: rgba(255, 211, 77, 0.18);
+  z-index: 3;
+}
+
+/* Pop — fade out + scale up (winning symbols vanish before cascade) */
+@keyframes slots-pop {
+  0%   { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+.slots-dom-cell.is-pop .slots-dom-sym {
+  animation: slots-pop 280ms ease-in forwards;
 }
 /* Win badge — floats bottom-center of the canvas wrap, scales in then
    pulses once. Pointer-events off so it doesn't eat taps on the grid. */
