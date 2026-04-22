@@ -79,15 +79,17 @@ export function Slots({ variant, onBack, onError, onOpenFairness }: Props) {
       // naturally paces itself to whatever the tumble chain takes.
       return await new Promise<AutoBetResult>((resolve) => {
         pendingSettleRef.current = resolve;
-        // Fallback: if the stage never reports (e.g. the component unmounts),
-        // resolve after a max timeout so autobet doesn't hang.
+        // Hard safety net: unblock after 6s even if the stage never reports
+        // done. 6s is longer than the longest legitimate tumble chain
+        // (~4s for FruitStorm 10-free-spin cascade) but short enough that
+        // the user doesn't feel permanently stuck.
         setTimeout(() => {
           if (pendingSettleRef.current) {
             pendingSettleRef.current(settled);
             pendingSettleRef.current = null;
             setRolling(false);
           }
-        }, 10_000);
+        }, 6_000);
       });
     } finally {
       setBusy(false);

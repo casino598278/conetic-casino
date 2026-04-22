@@ -119,11 +119,21 @@ function tryPlay(
   it.aborted = false;
   it.running = true;
   const emit = onEvent ?? (() => {});
-  playSequence(it, variant, pending.outcome, emit).then(() => {
+  // Always fire "done" — even if the sequence throws — so the parent's
+  // pending placeBet() Promise resolves and the Spin button re-enables.
+  // Without this, one runtime error in any variant animator (e.g. a missing
+  // field on outcome) leaves the button stuck at "Spinning..." forever.
+  const finish = () => {
     it.running = false;
-    onComplete();
-    emit({ kind: "done" });
-  });
+    try { onComplete(); } catch { /* ignore */ }
+    try { emit({ kind: "done" }); } catch { /* ignore */ }
+  };
+  playSequence(it, variant, pending.outcome, emit)
+    .then(finish)
+    .catch((err) => {
+      console.error("[SlotStage] playSequence failed", err);
+      finish();
+    });
 }
 
 /**
@@ -162,6 +172,14 @@ export function SlotStage({
 
     const bg = VARIANT_BG[variant];
     const app = new Application();
+    /** Pixi v8 adds a ResizePlugin by default which wires a window resize
+     *  listener. On component unmount its teardown calls `_cancelResize`,
+     *  which Vite tree-shakes out under minification and crashes with
+     *  "this._cancelResize is not a function". We never resize the canvas
+     *  from Pixi's side (CSS owns the layout), so we disable the plugin by
+     *  setting `resizeTo` to undefined AND also guard the destroy call to
+     *  only fire when renderer init completed. */
+    let initialized = false;
     app
       .init({
         width: stageW,
@@ -170,6 +188,8 @@ export function SlotStage({
         antialias: true,
         resolution: Math.min(window.devicePixelRatio || 1, 2),
         autoDensity: true,
+        // Do NOT pass resizeTo — leaving it undefined stops the ResizePlugin
+        // from attaching a window listener and avoids the destroy crash.
       })
       .then(async () => {
         if (cancelled) return;
@@ -264,6 +284,7 @@ export function SlotStage({
           app, host, grid, badgeLayer, cells, textures, cellSize,
           cols, rows, lastToken: -1, running: false, aborted: false,
         };
+        initialized = true;
 
         // Paint an initial random board so the stage isn't empty on first load.
         paintRandomBoard(internalsRef.current, variant);
@@ -277,7 +298,22 @@ export function SlotStage({
       const it = internalsRef.current;
       if (it) it.aborted = true;
       internalsRef.current = null;
-      app.destroy(true);
+      // Defer the Pixi destroy to a microtask so any throw inside
+      // ResizePlugin teardown doesn't surface as a React effect-cleanup
+      // error (which the ErrorBoundary would otherwise catch and unmount
+      // the whole app). The canvas's DOM node is removed below either way.
+      if (app.canvas?.parentNode) app.canvas.parentNode.removeChild(app.canvas);
+      if (!initialized) return;
+      queueMicrotask(() => {
+        try {
+          app.destroy(
+            { removeView: true },
+            { children: true, texture: false, textureSource: false },
+          );
+        } catch (err) {
+          console.warn("[SlotStage] destroy threw, ignoring", err);
+        }
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cols, rows]);
